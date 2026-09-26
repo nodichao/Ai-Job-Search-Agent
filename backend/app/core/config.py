@@ -1,5 +1,6 @@
 """Small environment-driven settings object with no implicit .env loading."""
 from dataclasses import dataclass
+import math
 import os
 
 from app.core.errors import ConfigurationError
@@ -29,6 +30,8 @@ class Settings:
     lever_site: str | None = None
     request_timeout_seconds: float = 15.0
     max_results_per_source: int = 100
+    recommendation_score_threshold: float = 60.0
+    recommendation_minimum_confidence: float = 0.5
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     port: int = 8000
 
@@ -37,12 +40,16 @@ class Settings:
         try:
             timeout = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "15"))
             limit = int(os.getenv("MAX_RESULTS_PER_SOURCE", "100"))
+            score_threshold = float(os.getenv("RECOMMENDATION_SCORE_THRESHOLD", "60"))
+            minimum_confidence = float(os.getenv("RECOMMENDATION_MINIMUM_CONFIDENCE", "0.5"))
             port = int(os.getenv("PORT", "8000"))
             origins = tuple(item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if item.strip())
         except ValueError as exc:
             raise ConfigurationError("Numeric configuration has an invalid value") from exc
-        if timeout <= 0 or limit < 1 or not 1 <= port <= 65535:
-            raise ConfigurationError("Timeout, result limit, or port is outside its valid range")
+        if (timeout <= 0 or limit < 1 or not 1 <= port <= 65535
+                or not math.isfinite(score_threshold) or not 0 <= score_threshold <= 100
+                or not math.isfinite(minimum_confidence) or not 0 <= minimum_confidence <= 1):
+            raise ConfigurationError("Timeout, result limit, port, or recommendation policy is outside its valid range")
         return cls(
             app_env=os.getenv("APP_ENV", "development"),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -56,6 +63,8 @@ class Settings:
             lever_site=os.getenv("LEVER_SITE") or None,
             request_timeout_seconds=timeout,
             max_results_per_source=limit,
+            recommendation_score_threshold=score_threshold,
+            recommendation_minimum_confidence=minimum_confidence,
             cors_origins=origins,
             port=port,
         )

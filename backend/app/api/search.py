@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.job_offer import JobOffer, OfferIdentity
 from app.domain.matching import FilteringResult, MatchExplanation, MatchingResult
+from app.domain.recommendation import RankingResult, Recommendation
 from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
 from app.services.connector_runtime import ConnectorAvailability, SearchRuntime
@@ -38,17 +39,20 @@ class OfferMatchView(BaseModel):
     filtering: FilteringResult
     matching: MatchingResult
     explanation: MatchExplanation
+    recommendation: Recommendation
 
 
 class ExcludedOfferView(BaseModel):
     offer: JobOffer
     filtering: FilteringResult
+    recommendation: Recommendation
 
 
 class SearchResponse(BaseModel):
     results: list[JobOffer]
     matches: list[OfferMatchView]
     excluded: list[ExcludedOfferView]
+    ranking: RankingResult
     meta: SearchMeta
 
 
@@ -73,13 +77,19 @@ async def search(body: SearchRequest, request: Request) -> SearchResponse:
                 filtering=item.filtering,
                 matching=item.matching,
                 explanation=item.explanation,
+                recommendation=item.recommendation,
             )
             for item in pipeline_result.analyses if item.filtering.included
         ],
         excluded=[
-            ExcludedOfferView(offer=item.offer, filtering=item.filtering)
+            ExcludedOfferView(
+                offer=item.offer,
+                filtering=item.filtering,
+                recommendation=item.recommendation,
+            )
             for item in pipeline_result.analyses if not item.filtering.included
         ],
+        ranking=pipeline_result.ranking,
         meta=SearchMeta(
             total=len(offers),
             sources=sources,

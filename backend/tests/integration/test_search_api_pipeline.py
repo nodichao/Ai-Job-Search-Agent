@@ -33,6 +33,7 @@ async def test_api_composes_two_fixture_connectors_and_returns_canonical_job_off
                 remoteok_endpoint="https://remoteok.example.test/api",
                 lever_enabled=True,
                 lever_site="company-board",
+                recommendation_minimum_confidence=0.3,
             ),
             fetcher=HttpJsonFetcher(client=source_client),
         )
@@ -42,7 +43,7 @@ async def test_api_composes_two_fixture_connectors_and_returns_canonical_job_off
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as api_client:
             response = await api_client.post("/api/search", json={
-                "profile": {},
+                "profile": {"jobTitles": ["Platform Engineer"]},
                 "preferences": {"jobTitles": ["Engineer"], "skills": ["Python"]},
             })
 
@@ -55,6 +56,15 @@ async def test_api_composes_two_fixture_connectors_and_returns_canonical_job_off
     assert all("payload" not in offer and "provenance" not in offer for offer in body["results"])
     assert body["results"][0]["position"]["title"] == "Senior Platform Engineer"
     assert body["results"][1]["position"]["title"] == "Platform Engineer"
+    assert len(body["matches"]) == 3
+    assert {item["recommendation"]["decision"] for item in body["matches"]} == {
+        "RECOMMENDED", "NOT_RECOMMENDED"
+    }
+    assert body["ranking"]["total"] == 2
+    assert [item["offer"]["position"]["title"] for item in body["ranking"]["offers"]] == [
+        "Platform Engineer", "Senior Platform Engineer"
+    ]
+    assert all("matching" not in offer and "recommendation" not in offer for offer in body["results"])
     assert len(requests) == 2
     assert requests[0].url.query == b""
 
@@ -197,6 +207,8 @@ async def test_api_returns_filtered_canonical_offers_and_separate_match_explanat
     assert match["offerIdentity"]["sourceId"] == "735421"
     assert match["matching"]["score"] is not None
     assert match["explanation"]["score"] == match["matching"]["score"]
+    assert match["recommendation"]["decision"] == "INSUFFICIENT_EVIDENCE"
+    assert body["ranking"]["total"] == 0
     assert "matchScore" not in body["results"][0]
     assert "matching" not in body["results"][0]
     assert body["excluded"] == []
@@ -229,3 +241,4 @@ async def test_api_excludes_known_required_conflict_but_keeps_structured_explana
     assert body["excluded"][0]["offer"]["position"]["title"] == "Senior Platform Engineer"
     assert body["excluded"][0]["filtering"]["included"] is False
     assert body["excluded"][0]["filtering"]["conflicts"] == ["jobTitles"]
+    assert body["excluded"][0]["recommendation"]["decision"] == "NOT_RECOMMENDED"

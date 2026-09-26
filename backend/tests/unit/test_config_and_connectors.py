@@ -28,6 +28,18 @@ def test_connectors_default_to_disabled_and_load_explicit_context(monkeypatch: p
     assert settings.lever_site == "example-site"
 
 
+def test_recommendation_policy_is_configurable_and_range_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RECOMMENDATION_SCORE_THRESHOLD", "72")
+    monkeypatch.setenv("RECOMMENDATION_MINIMUM_CONFIDENCE", "0.65")
+    settings = Settings.from_env()
+    assert settings.recommendation_score_threshold == 72
+    assert settings.recommendation_minimum_confidence == 0.65
+
+    monkeypatch.setenv("RECOMMENDATION_MINIMUM_CONFIDENCE", "1.2")
+    with pytest.raises(ConfigurationError):
+        Settings.from_env()
+
+
 def test_invalid_settings_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REMOTEOK_ENABLED", "sometimes")
     with pytest.raises(ConfigurationError):

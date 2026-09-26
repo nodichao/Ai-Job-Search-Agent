@@ -4,10 +4,11 @@ FastAPI modular monolith. The implemented search path is:
 
 ```text
 POST /api/search → SearchCriteria → enabled connectors → RawOffer
-                 → source normalizers → canonical JobOffer response
+                 → source normalizers → JobOffer → filtering → matching
+                 → explanation → recommendation → ranking
 ```
 
-Collection, normalization, filtering, and matching remain separate services. Deduplication, recommendation, LLM explanation, CV parsing, and application submission are not part of this path.
+Collection, normalization, filtering, matching, explanation, recommendation, and ranking remain separate services. Deduplication, LLM explanation, CV parsing, and application submission are not part of this path.
 
 ## Run locally
 
@@ -36,6 +37,8 @@ All sources are disabled by default.
 `POST /api/search` accepts the existing `profile` and `preferences` request shape. Search criteria are copied from preferences; the profile and preferences are used by the deterministic matching stage. Results are canonical `JobOffer` objects. `meta.sources` lists sources that returned normalized, retained offers.
 
 Search now applies explicit post-retrieval filtering and deterministic matching. `results` contains offers that were not contradicted by a known `REQUIRED` criterion; unknown evidence does not exclude. The additive `matches` array contains an offer identity, filtering evidence, dimension scores, confidence, and a deterministic explanation. `excluded` contains offers rejected by a known required conflict and the evidence for that decision. Matching is not a hiring prediction and does not call the LLM. Exact weighting and missing-evidence behavior are documented in `docs/implementation/filtering-and-matching.md`.
+
+Each retained match includes a deterministic `recommendation` decision. The `ranking` object orders only recommended offers, with explicit ranks and their canonical source provenance. `results` still includes every offer retained by filtering, even when recommendation says not to present it or evidence is insufficient. Defaults are configurable with `RECOMMENDATION_SCORE_THRESHOLD=60` and `RECOMMENDATION_MINIMUM_CONFIDENCE=0.5`; these are initial presentation-policy thresholds, not calibrated hiring estimates. The policy, decision reasons, order, and tie-break rules are documented in `docs/implementation/recommendation-and-ranking.md`.
 
 `POST /api/search/from-text` remains `501 Not Implemented`: preference parsing depends on the LLM path and is outside this task. `GET /health` returns the health status.
 

@@ -9,6 +9,8 @@ from app.connectors.remoteok import RemoteOKConnector
 from app.connectors.common.retry import RetryPolicy
 from app.core.config import Settings
 from app.services.normalization_service import NormalizationService
+from app.services.recommendation_service import RecommendationPolicy, RecommendationService
+from app.services.ranking_service import RankingService
 from app.services.search_pipeline import SearchPipeline
 from app.services.search_service import ConnectorBinding, SearchService
 
@@ -114,5 +116,13 @@ def build_search_runtime(
     ))
 
     search_service = SearchService(bindings)
-    pipeline = SearchPipeline(search_service, NormalizationService())
+    pipeline = SearchPipeline(
+        search_service,
+        NormalizationService(),
+        recommendation_service=RecommendationService(RecommendationPolicy(
+            score_threshold=settings.recommendation_score_threshold,
+            minimum_confidence=settings.recommendation_minimum_confidence,
+        )),
+        ranking_service=RankingService(),
+    )
     return SearchRuntime(pipeline=pipeline, connectors=tuple(states))
