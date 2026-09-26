@@ -7,7 +7,7 @@ import pytest
 
 from app.connectors.common.http import HttpJsonFetcher
 from app.connectors.greenhouse import GreenhouseBoardContext, GreenhouseBoardOffer, GreenhouseConnector
-from app.core.errors import ConnectorError
+from app.core.errors import AuthenticationError, ConnectorError, RateLimitError, SourceUnavailableError
 from app.domain.search_criteria import SearchCriteria
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "greenhouse" / "opaque_board_response.json"
@@ -58,3 +58,41 @@ async def test_greenhouse_rejects_invalid_custom_parser_result():
             endpoint="https://greenhouse.example.invalid/board", parser=BadParser())
         with pytest.raises(ConnectorError):
             await connector.search(SearchCriteria())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "error"), [(401, AuthenticationError), (403, AuthenticationError), (429, RateLimitError), (404, ConnectorError)])
+async def test_greenhouse_transport_preserves_common_http_error_categories(status, error):
+    calls = 0
+    def handler(_):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(status)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        connector = GreenhouseConnector(HttpJsonFetcher(client=client), GreenhouseBoardContext("board"),
+            endpoint="https://greenhouse.example.invalid/board", parser=ExplicitFixtureParser())
+        with pytest.raises(error):
+            await connector.search(SearchCriteria())
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_greenhouse_timeout_is_reported_by_shared_transport():
+    def handler(request):
+        raise httpx.ReadTimeout("timeout", request=request)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        connector = GreenhouseConnector(HttpJsonFetcher(client=client), GreenhouseBoardContext("board"),
+            endpoint="https://greenhouse.example.invalid/board", parser=ExplicitFixtureParser())
+        with pytest.raises(SourceUnavailableError):
+            await connector.search(SearchCriteria())
+
+
+@pytest.mark.asyncio
+async def test_greenhouse_empty_parser_result_returns_no_offers():
+    class EmptyParser:
+        def parse(self, response, context):
+            return []
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json={}))) as client:
+        connector = GreenhouseConnector(HttpJsonFetcher(client=client), GreenhouseBoardContext("board"),
+            endpoint="https://greenhouse.example.invalid/board", parser=EmptyParser())
+        assert await connector.search(SearchCriteria()) == []

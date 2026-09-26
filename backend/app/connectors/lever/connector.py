@@ -59,6 +59,8 @@ class LeverConnector:
             )
             if not isinstance(payload, list):
                 raise ConnectorError("Lever postings response must be a JSON list")
+            if len(payload) > limit:
+                raise ConnectorError("Lever postings response exceeded the requested page limit")
             retrieved_at = self._clock()
             offers: list[RawOffer] = []
             for index, item in enumerate(payload):

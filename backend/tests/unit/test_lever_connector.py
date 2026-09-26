@@ -54,7 +54,9 @@ async def test_page_size_and_result_cap_bound_pagination():
 
     def handler(request):
         calls.append(request)
-        return httpx.Response(200, json=body)
+        skip = int(request.url.params["skip"])
+        limit = int(request.url.params["limit"])
+        return httpx.Response(200, json=body[skip:skip + limit])
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         connector = LeverConnector(HttpJsonFetcher(client=client), LeverSiteContext("board"), page_size=2, max_results=3)
@@ -70,6 +72,35 @@ async def test_invalid_response_shapes_are_rejected():
         async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))) as client:
             with pytest.raises(ConnectorError):
                 await LeverConnector(HttpJsonFetcher(client=client), LeverSiteContext("board")).search(SearchCriteria())
+
+
+@pytest.mark.asyncio
+async def test_empty_page_returns_no_offers():
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=[]))) as client:
+        offers = await LeverConnector(HttpJsonFetcher(client=client), LeverSiteContext("board")).search(SearchCriteria())
+    assert offers == []
+
+
+@pytest.mark.asyncio
+async def test_page_error_fails_the_source_instead_of_returning_partial_results():
+    def handler(request):
+        if request.url.params["skip"] == "0":
+            return httpx.Response(200, json=fixture("page_one.json"))
+        return httpx.Response(503)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        connector = LeverConnector(HttpJsonFetcher(client=client, retry_policy=RetryPolicy(max_attempts=1)),
+                                   LeverSiteContext("board"), page_size=2)
+        with pytest.raises(SourceUnavailableError):
+            await connector.search(SearchCriteria())
+
+
+@pytest.mark.asyncio
+async def test_page_larger_than_requested_limit_is_rejected():
+    body = fixture("page_one.json") + fixture("page_two.json")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))) as client:
+        connector = LeverConnector(HttpJsonFetcher(client=client), LeverSiteContext("board"), page_size=2)
+        with pytest.raises(ConnectorError, match="exceeded"):
+            await connector.search(SearchCriteria())
 
 
 @pytest.mark.asyncio
