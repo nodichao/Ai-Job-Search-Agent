@@ -3,7 +3,8 @@ from time import perf_counter
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.job_offer import JobOffer
+from app.domain.job_offer import JobOffer, OfferIdentity
+from app.domain.matching import FilteringResult, MatchExplanation, MatchingResult
 from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
 from app.services.connector_runtime import ConnectorAvailability, SearchRuntime
@@ -32,8 +33,22 @@ class SearchMeta(BaseModel):
     failed_sources: list[dict[str, str]] = Field(alias="failedSources")
 
 
+class OfferMatchView(BaseModel):
+    offer_identity: OfferIdentity = Field(alias="offerIdentity")
+    filtering: FilteringResult
+    matching: MatchingResult
+    explanation: MatchExplanation
+
+
+class ExcludedOfferView(BaseModel):
+    offer: JobOffer
+    filtering: FilteringResult
+
+
 class SearchResponse(BaseModel):
     results: list[JobOffer]
+    matches: list[OfferMatchView]
+    excluded: list[ExcludedOfferView]
     meta: SearchMeta
 
 
@@ -46,12 +61,25 @@ async def search(body: SearchRequest, request: Request) -> SearchResponse:
     runtime = _runtime(request)
     criteria = criteria_from_preferences(body.preferences)
     started = perf_counter()
-    pipeline_result = await runtime.pipeline.search(criteria)
-    offers = pipeline_result.offers
+    pipeline_result = await runtime.pipeline.search(criteria, body.profile, body.preferences)
+    offers = pipeline_result.included_offers
     duration_ms = round((perf_counter() - started) * 1000)
     sources = list(dict.fromkeys(offer.source.name for offer in offers))
     return SearchResponse(
         results=offers,
+        matches=[
+            OfferMatchView(
+                offerIdentity=item.offer.identity,
+                filtering=item.filtering,
+                matching=item.matching,
+                explanation=item.explanation,
+            )
+            for item in pipeline_result.analyses if item.filtering.included
+        ],
+        excluded=[
+            ExcludedOfferView(offer=item.offer, filtering=item.filtering)
+            for item in pipeline_result.analyses if not item.filtering.included
+        ],
         meta=SearchMeta(
             total=len(offers),
             sources=sources,

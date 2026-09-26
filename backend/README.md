@@ -7,7 +7,7 @@ POST /api/search → SearchCriteria → enabled connectors → RawOffer
                  → source normalizers → canonical JobOffer response
 ```
 
-Collection and normalization remain separate services. There is no filtering, deduplication, matching, scoring, recommendation, LLM explanation, CV parsing, or application submission in this path.
+Collection, normalization, filtering, and matching remain separate services. Deduplication, recommendation, LLM explanation, CV parsing, and application submission are not part of this path.
 
 ## Run locally
 
@@ -33,7 +33,9 @@ All sources are disabled by default.
 
 ## Search routes
 
-`POST /api/search` accepts the existing `profile` and `preferences` request shape. Search criteria are copied from preferences; the profile is validated but not used for matching or scoring. Results are canonical `JobOffer` objects. `meta.sources` lists sources that returned normalized offers.
+`POST /api/search` accepts the existing `profile` and `preferences` request shape. Search criteria are copied from preferences; the profile and preferences are used by the deterministic matching stage. Results are canonical `JobOffer` objects. `meta.sources` lists sources that returned normalized, retained offers.
+
+Search now applies explicit post-retrieval filtering and deterministic matching. `results` contains offers that were not contradicted by a known `REQUIRED` criterion; unknown evidence does not exclude. The additive `matches` array contains an offer identity, filtering evidence, dimension scores, confidence, and a deterministic explanation. `excluded` contains offers rejected by a known required conflict and the evidence for that decision. Matching is not a hiring prediction and does not call the LLM. Exact weighting and missing-evidence behavior are documented in `docs/implementation/filtering-and-matching.md`.
 
 `POST /api/search/from-text` remains `501 Not Implemented`: preference parsing depends on the LLM path and is outside this task. `GET /health` returns the health status.
 

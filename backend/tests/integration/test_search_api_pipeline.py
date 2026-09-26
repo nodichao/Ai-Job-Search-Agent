@@ -168,3 +168,64 @@ async def test_configured_source_with_no_offers_is_distinct_from_source_failure(
     assert response.status_code == 200
     assert response.json()["results"] == []
     assert response.json()["meta"]["failedSources"] == []
+
+
+@pytest.mark.asyncio
+async def test_api_returns_filtered_canonical_offers_and_separate_match_explanations():
+    fixture = json.loads((FIXTURES / "remoteok" / "offer_list.json").read_text(encoding="utf-8"))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=fixture)
+    )) as source_client:
+        app = create_app(
+            Settings(remoteok_enabled=True, remoteok_endpoint="https://remoteok.example.test/api"),
+            fetcher=HttpJsonFetcher(client=source_client),
+        )
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/search", json={
+                "profile": {"skills": ["Python"], "jobTitles": ["Platform Engineer"], "totalExperienceYears": 8},
+                "preferences": {"jobTitles": ["Engineer"]},
+            })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["results"]) == 1
+    assert body["results"][0]["position"]["title"] == "Senior Platform Engineer"
+    assert body["results"][0]["source"]["name"] == "RemoteOK"
+    assert body["results"][0]["source"]["retrievedAt"]
+    assert len(body["matches"]) == 1
+    match = body["matches"][0]
+    assert match["offerIdentity"]["sourceId"] == "735421"
+    assert match["matching"]["score"] is not None
+    assert match["explanation"]["score"] == match["matching"]["score"]
+    assert "matchScore" not in body["results"][0]
+    assert "matching" not in body["results"][0]
+    assert body["excluded"] == []
+
+
+@pytest.mark.asyncio
+async def test_api_excludes_known_required_conflict_but_keeps_structured_explanation():
+    fixture = json.loads((FIXTURES / "remoteok" / "offer_list.json").read_text(encoding="utf-8"))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=fixture)
+    )) as source_client:
+        app = create_app(
+            Settings(remoteok_enabled=True, remoteok_endpoint="https://remoteok.example.test/api"),
+            fetcher=HttpJsonFetcher(client=source_client),
+        )
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/search", json={
+                "profile": {},
+                "preferences": {
+                    "jobTitles": ["Designer"],
+                    "preferenceStrength": {"jobTitles": "REQUIRED"},
+                },
+            })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["results"] == []
+    assert body["matches"] == []
+    assert len(body["excluded"]) == 1
+    assert body["excluded"][0]["offer"]["position"]["title"] == "Senior Platform Engineer"
+    assert body["excluded"][0]["filtering"]["included"] is False
+    assert body["excluded"][0]["filtering"]["conflicts"] == ["jobTitles"]
