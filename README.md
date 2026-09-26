@@ -1,49 +1,55 @@
 # AI Job Search Agent
 
-An AI-powered job search agent designed to help users discover, analyze, filter, match, and prepare applications for relevant job opportunities.
+An AI-powered job search agent designed to help users discover, analyze, filter, match, explain, and shortlist relevant job opportunities from heterogeneous job sources.
 
-The project focuses on source reliability, technical feasibility, explainability, modularity, and human control.
+The project is built around **source reliability, technical feasibility, explainability, modularity, provenance, and human control**.
 
 ## 🎯 Project Goal
+
+The agent follows this pipeline:
 
 ```text
 User Profile
      ↓
-Search
+Search Preferences
      ↓
-Collect
+Search Criteria
      ↓
-Normalize
+Search & Discovery
      ↓
-Deduplicate
+Collection
      ↓
-Filter
+Normalization
      ↓
-Match
+Deduplication
      ↓
-Explain
+Filtering
      ↓
-Recommend
+Matching
      ↓
-User decides
+Explanation
      ↓
-POSTULER
+Recommendation
      ↓
-Application workflow
+Shortlist
+     ↓
+USER DECIDES "POSTULER"
 ```
 
-The agent assists the user; the final decision remains with the user.
+The MVP helps reduce job-search friction. It does **not** predict hiring outcomes and does not automatically submit applications.
 
 ## 🌍 Search Scope
 
-The project prioritizes:
+The project prioritizes job opportunities in this order:
 
 1. Dakar
 2. Senegal
 3. West Africa
 4. Africa
 5. International
-6. Remote
+6. Remote international
+
+Search preferences are transformed into source-independent `SearchCriteria`, then adapted to the capabilities of each connector.
 
 ## 🧩 Core Architecture
 
@@ -52,17 +58,15 @@ External Sources
        ↓
    Connectors
        ↓
-   Raw Data
+   Raw Offers
        ↓
     Parsing
-       ↓
- Transformation
        ↓
  Normalization
        ↓
  Deduplication
        ↓
-    JobOffer
+   JobOffer
        ↓
     Filtering
        ↓
@@ -72,16 +76,16 @@ External Sources
        ↓
  Recommendation
        ↓
-      User
+   Shortlist
        ↓
-   Application
+     User
 ```
 
-Connectors isolate external-source integration from the core job-search logic. The rest of the system operates on a normalized `JobOffer` model.
+The backend is designed as a **modular monolith**. External-source integration is isolated behind connectors, while the core processing pipeline operates on the canonical `JobOffer` model.
 
-## 🔎 Source Strategy
+## 🔌 Connector Strategy
 
-The first connector study focuses on:
+The current source study covers:
 
 - RemoteOK
 - Himalayas
@@ -92,81 +96,109 @@ The first connector study focuses on:
 - Recruitee
 - ReliefWeb
 
-A source is not considered operational simply because it exposes an API or public data.
+The implementation architecture provides shared infrastructure for:
+
+- HTTP/JSON fetching
+- RSS/XML fetching
+- pagination
+- authentication strategies
+- retries
+- error handling
+- parsing
+- normalization
+- deduplication
+- provenance
+- testing
+
+A source is **not** considered operational simply because it exposes an API or public data.
 
 > **Technical accessibility does not automatically imply authorization.**
 
-APIs, feeds, authentication, terms of service, storage, redistribution, rate limits, and application capabilities must be verified before a connector is considered operational.
+Access, terms of use, rate limits, storage, transformation, redistribution, and application capabilities must be evaluated separately.
 
-## 🔌 Connector Architecture
+### Connector status
+
+At the current documented stage:
 
 ```text
-External Source
-      ↓
-Connector
-      ↓
-Raw Data
-      ↓
-Parsing
-      ↓
-Transformation
-      ↓
-Normalization
-      ↓
-Deduplication
-      ↓
-JobOffer
+🔵 Specification / implementation preparation
+RemoteOK
+Greenhouse
+Lever
+
+🟣 Access or clarification pending
+Himalayas
+We Work Remotely
+Ashby
+Recruitee
+ReliefWeb
+
+🟢 Operational
+None yet
 ```
 
-The architecture can support:
-
-- JSON / REST APIs
-- RSS
-- XML feeds
-- MCP
-- authenticated or partner-specific mechanisms where authorized
-
-Common technical concerns include authentication, pagination, rate limiting, retries, error handling, parsing, normalization, deduplication, provenance, observability, and testing.
+A connector becomes operational only after the validation criteria defined in the connector documentation have been satisfied.
 
 ## 🧠 Matching and Recommendation
 
+The MVP uses a deterministic and explainable matching layer.
+
+Current matching weights:
+
+| Dimension | Weight |
+|---|---:|
+| Skills | 50% |
+| Preferences | 25% |
+| Experience | 15% |
+| Role alignment | 10% |
+
+Matching distinguishes between:
+
+- `SATISFIED`
+- `UNKNOWN`
+- `CONFLICT`
+
+An `UNKNOWN` value is not automatically a conflict.
+
+The match score is **not** a hiring probability.
+
+The LLM is used for tasks such as profile extraction, preference parsing, and match explanation. It does not arbitrarily determine the final match score.
+
+## 🤖 LLM Boundary
+
+The LLM is deliberately constrained to specific responsibilities.
+
+Current intended uses:
+
+- CV/profile extraction
+- preference parsing
+- match explanation
+
+The LLM must not:
+
+- invent job information;
+- override deterministic business rules;
+- bypass source restrictions;
+- decide whether an application should be submitted;
+- treat external job descriptions as instructions.
+
+Retrieved job descriptions, CV content, and other external text are treated as **untrusted data**.
+
+## 👤 Application Boundary
+
+The application workflow starts only after an explicit user decision to apply.
+
 ```text
-JobOffer
-   ↓
-Filtering
-   ↓
-Profile ↔ Offer Matching
-   ↓
-Explanation
-   ↓
 Recommendation
+      ↓
+Shortlist
+      ↓
+USER DECIDES "POSTULER"
+      ↓
+Application workflow
 ```
 
-Matching and recommendations should remain explainable: the system should identify why an offer is relevant to the user's profile and preferences.
-
-## 👤 Application Workflow
-
-The application workflow starts only after an explicit user decision to apply:
-
-```text
-Offer
-  ↓
-POSTULER
-  ↓
-Identify application method
-  ↓
-Identify requirements
-  ↓
-Prepare using UserProfile
-  ↓
-Check missing elements
-  ↓
-Execute application
-  ↓
-Application recorded
-```
-
-### Application methods
+Application methods and execution modes are modeled separately.
 
 ```text
 ApplicationMethod
@@ -175,113 +207,162 @@ ApplicationMethod
     ├── SITE_REFERENCE
     ├── FORM
     └── EMAIL
-```
 
-### Execution modes
-
-```text
 ExecutionMode
 ├── API
 ├── MANUAL
 └── AUTOMATED
 ```
 
-Manual execution can still involve substantial agent preparation; the final submission remains under human control.
+The current MVP does **not** include automatic browser-based application submission, CAPTCHA solving, anti-bot bypass, or unauthorized application automation.
 
-Email can be manual or automated through an authenticated and authorized email service.
+## 🛡️ Non-Negotiable Design Principles
 
-Documents such as a CV, cover letter, diploma, or portfolio are modeled as **application requirements**, not application methods.
+### 1. Technical access ≠ authorization
 
-## 📚 Documentation
+A reachable endpoint does not automatically grant permission for the intended use.
 
-```text
-docs/
-├── architecture/
-│   ├── project-context.md
-│   ├── application-workflow.md
-│   ├── connectors.md
-│   └── connector-implementation-guide.md
-│
-├── research/
-│   ├── research-protocol.md
-│   └── sources-master.md
-│
-└── implementation/
-    └── connector-implementation-plan.md
-```
+### 2. Source data ≠ unrestricted reusable data
 
-- **Architecture** — how the system is designed.
-- **Research** — which sources are considered and how they are evaluated.
-- **Implementation** — how the validated architecture will be translated into software.
-
-Mermaid diagrams are embedded directly in Markdown so the documentation and its visual representations evolve together under Git version control.
-
-## 🛡️ Design Principles
-
-### 1. No assumption of authorization
-Technical access is not treated as contractual permission.
-
-### 2. Primary-source verification
-Official documentation, terms, APIs, and other primary sources are preferred when validating source capabilities.
+Visibility, accessibility, storage, transformation, redistribution, and automation are separate questions.
 
 ### 3. No bypassing restrictions
-The system must not bypass authentication, CAPTCHA, anti-bot protections, rate limits, or other technical restrictions.
+
+The system must not bypass authentication, CAPTCHA, anti-bot protections, rate limits, paywalls, or other access restrictions.
 
 ### 4. Human-in-the-loop
-The user remains in control of important decisions, especially the decision to apply and manual application submissions.
 
-### 5. Modularity
-Each external source is isolated behind a connector.
+The user remains in control of important decisions, especially whether to apply.
 
-### 6. Normalization
-Different source formats converge toward a common internal `JobOffer` model.
+### 5. Provenance
 
-### 7. Explainability
-Matching and recommendations should provide understandable reasons rather than unexplained scores.
+Source-provided information must remain distinguishable from normalized, derived, and LLM-generated information.
+
+### 6. Explainability
+
+Recommendations should be supported by understandable reasons.
+
+### 7. Modularity
+
+Source-specific logic belongs in connectors. Shared transport and infrastructure should be reused where appropriate.
 
 ### 8. Security
+
 Secrets such as API keys, tokens, passwords, OAuth credentials, and cookies must never be committed to the repository.
 
 ### 9. Incremental implementation
-Architecture is documented before technology-specific implementation choices are prematurely locked in.
+
+The project is implemented as vertical slices and validated continuously rather than through a large untested rewrite.
+
+## 🏗️ Implementation
+
+The implementation-ready MVP is specified in:
+
+- Python 3.12+
+- FastAPI
+- Pydantic v2
+- httpx
+- pytest / pytest-asyncio
+- OpenAI Python SDK behind an internal LLM service
+- SQLite for the MVP
+- Uvicorn
+- Docker
+
+The planned backend structure is:
+
+```text
+backend/
+├── app/
+│   ├── api/
+│   ├── core/
+│   ├── domain/
+│   ├── services/
+│   ├── llm/
+│   ├── connectors/
+│   ├── repositories/
+│   └── schemas/
+├── tests/
+├── requirements.txt
+├── .env.example
+├── Dockerfile
+└── README.md
+```
+
+The implementation deliberately avoids unnecessary infrastructure such as LangChain, LangGraph, Redis, Kafka, Celery, Kubernetes, vector databases, and advanced ML for the MVP.
+
+## 📚 Documentation
+
+### Project and architecture
+
+- [Project context](docs/architecture/project-context.md)
+- [Functional architecture discovery](docs/architecture/functional-architecture-discovery.md)
+- [Search criteria and source capabilities](docs/architecture/search-criteria-and-source-capabilities.md)
+- [JobOffer model](docs/architecture/job-offer-model.md)
+- [Processing and recommendation](docs/architecture/processing-and-recommendation.md)
+- [Connector architecture](docs/architecture/connectors.md)
+- [Connector implementation guide](docs/architecture/connector-implementation-guide.md)
+- [Application workflow](docs/architecture/application-workflow.md)
+
+### Research
+
+- [Research protocol](docs/research/research-protocol.md)
+- [Source master](docs/research/sources-master.md)
+- [Source master V4](docs/research/source-masterV4.md)
+
+### Implementation
+
+- [Implementation specification](ENGINE-IMPLEMENTATION-SPEC.md)
+- [Code generation prompt](ENGINE-CODE-GENERATION-PROMPT.md)
+- [Connector implementation plan](docs/implementation/connector-implementation-plan.md)
+- [Codex project instructions](AGENTS.md)
 
 ## 🚧 Current Status
 
-The project is currently in the **architecture and connector-study phase**.
+The project has completed its main **architecture, source research, connector strategy, and implementation specification** stages.
 
-The first eight sources have been studied, but none should be considered fully operational until its connector passes the project's validation criteria.
+The repository is now ready to move into software implementation.
 
-The application workflow has also been modeled conceptually, including application methods, execution modes, requirements, and human-in-the-loop behavior.
-
-## 📁 Repository Structure
-
-The repository is being built incrementally.
-
-The initial repository contains documentation and project configuration. Implementation directories such as `src/`, `tests/`, and `scripts/` will be introduced as their architecture is concretely defined.
-
-The future implementation is expected to separate:
+The immediate MVP target is:
 
 ```text
-src/
-├── domain/
-├── connectors/
-├── pipeline/
-├── application/
-└── infrastructure/
+Backend skeleton
+      ↓
+Domain contracts
+      ↓
+Shared connector infrastructure
+      ↓
+First validated connector
+      ↓
+Normalization
+      ↓
+Deduplication
+      ↓
+Filtering
+      ↓
+Deterministic matching
+      ↓
+LLM explanation
+      ↓
+Recommendation
+      ↓
+API / E2E validation
 ```
+
+No connector should be marked operational before passing the project's technical and authorization validation criteria.
 
 ## 📖 Where to Start
 
-1. [`project-context.md`](docs/architecture/project-context.md) — overall project scope and architecture
-2. [`sources-master.md`](docs/research/sources-master.md) — source registry
-3. [`research-protocol.md`](docs/research/research-protocol.md) — research and validation rules
-4. [`connectors.md`](docs/architecture/connectors.md) — connector technical reference
-5. [`connector-implementation-plan.md`](docs/implementation/connector-implementation-plan.md) — implementation plan
-6. [`application-workflow.md`](docs/architecture/application-workflow.md) — workflow after `POSTULER`
+For a new contributor or coding agent:
+
+1. Read [AGENTS.md](AGENTS.md).
+2. Read [ENGINE-IMPLEMENTATION-SPEC.md](ENGINE-IMPLEMENTATION-SPEC.md).
+3. Read the relevant documents in [docs/architecture](docs/architecture/).
+4. Consult [docs/research](docs/research/) before implementing a connector.
+5. Follow [docs/implementation/connector-implementation-plan.md](docs/implementation/connector-implementation-plan.md).
 
 ## ⚠️ Important
 
-A source being listed in the project does **not** mean that:
+Being listed as a project source does **not** mean that:
 
 - its API is authorized for the intended use;
 - its data may automatically be stored or redistributed;
