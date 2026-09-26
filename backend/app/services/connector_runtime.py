@@ -63,7 +63,7 @@ def build_search_runtime(
                 name="RemoteOK",
                 status="development",
                 activeForSearch=True,
-                reason="Explicitly enabled; live schema, request limits, and reuse conditions still require verification.",
+                reason="Explicitly enabled; current feed shape is verified, but request limits, storage terms, and UI attribution remain unresolved.",
             ))
     else:
         reason = (

@@ -26,11 +26,21 @@ All sources are disabled by default.
 
 | Source | Configuration | Current behavior |
 |---|---|---|
-| RemoteOK | `REMOTEOK_ENABLED=true`; optional `REMOTEOK_ENDPOINT` defaults to the documented `https://remoteok.com/api`. | Can be explicitly enabled. Lifecycle remains `development`; live response shape, request limits, and reuse conditions are not fully verified. Attribution requirements are not implemented as a UI because this backend returns JSON only. |
+| RemoteOK | `REMOTEOK_ENABLED=true`; `REMOTEOK_ENDPOINT` defaults to the official `https://remoteok.com/api`. | Disabled by default; when explicitly enabled, its status remains `development`. The current feed envelope (metadata followed by offers) has been observed and is handled. Request limits, retention/storage terms, and effective attribution in a consuming UI remain unresolved. See [`docs/research/remoteok-task12-verification.md`](../docs/research/remoteok-task12-verification.md). |
 | Lever | `LEVER_ENABLED=true` and a required `LEVER_SITE`. | Can be explicitly enabled for that SITE using the global API origin. Lifecycle remains `access pending`; third-party use conditions, region choice, and pagination termination remain unresolved. |
 | Greenhouse | No activation setting is provided. | Not composed: the repository has no production parser or normalizer. The API requires a board context and applicable usage authorization. |
 
 `HIMALAYAS_ENABLED` is retained in settings for compatibility but no Himalayas connector is part of this task. Connector availability is returned in `meta.connectors`; a connector's lifecycle status is not a claim that it is operational. Connector failures are isolated and summarized in `meta.failedSources` without returning exception messages or raw payloads.
+
+### Optional one-request RemoteOK smoke check
+
+The automated suite does not call RemoteOK. If a developer deliberately decides that a one-off public-feed read is appropriate, run from `backend/`:
+
+```powershell
+python -m scripts.remoteok_smoke --confirm-one-off-read
+```
+
+This explicitly requested script makes one GET with no retry, normalizes responses in memory, prints only counts and whether attribution metadata was present, and does not save or print offer payloads. It leaves the connector lifecycle at `development`. A successful check establishes technical retrieval only. Do not use or display collected offers in an aggregator until the required source credit and followed links are implemented in the consuming UI and outstanding storage/retention terms have been resolved. Do not run it automatically or in CI.
 
 ## Search routes
 

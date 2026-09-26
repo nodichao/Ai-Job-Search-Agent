@@ -31,3 +31,28 @@ async def test_remoteok_fixture_crosses_connector_raw_and_canonical_boundaries()
     assert normalized[0].source.name == "RemoteOK"
     assert normalized[0].position.summary is None
     assert "unmapped_source_field" not in normalized[0].model_dump(mode="json")
+
+
+@pytest.mark.asyncio
+async def test_remoteok_feed_metadata_does_not_contaminate_canonical_job_offer() -> None:
+    source_offer = json.loads(FIXTURE.read_text(encoding="utf-8"))[0]
+    feed_metadata = {
+        "last_updated": 1790438426,
+        "legal": "Credit Remote OK as source and link the original job URL.",
+    }
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(200, json=[feed_metadata, source_offer])
+    )
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        raw_offers = await RemoteOKConnector(HttpJsonFetcher(client=client), ENDPOINT).search(SearchCriteria())
+    normalized = RemoteOKNormalizer().normalize(raw_offers[0])
+    canonical_json = normalized.model_dump(mode="json", by_alias=True)
+
+    assert len(raw_offers) == 1
+    assert raw_offers[0].payload == source_offer
+    assert raw_offers[0].provenance["attribution_notice"] == feed_metadata["legal"]
+    assert canonical_json["source"]["name"] == "RemoteOK"
+    assert str(normalized.identity.offer_url) == "https://remoteok.example.invalid/remote-jobs/735421"
+    assert "attribution_notice" not in str(canonical_json)
+    assert "last_updated" not in str(canonical_json)

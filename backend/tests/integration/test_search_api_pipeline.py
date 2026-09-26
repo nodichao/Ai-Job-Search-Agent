@@ -139,11 +139,15 @@ async def test_api_reports_all_sources_failed_without_exposing_internal_errors()
 @pytest.mark.asyncio
 async def test_api_with_one_enabled_connector_returns_normalized_results():
     remoteok = json.loads((FIXTURES / "remoteok" / "offer_list.json").read_text(encoding="utf-8"))
+    feed_body = [{
+        "last_updated": 1790438426,
+        "legal": "Credit Remote OK as source and link the original job URL.",
+    }, *remoteok]
     calls = 0
     def handler(request):
         nonlocal calls
         calls += 1
-        return httpx.Response(200, json=remoteok)
+        return httpx.Response(200, json=feed_body)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as source_client:
         app = create_app(
             Settings(remoteok_enabled=True, remoteok_endpoint="https://remoteok.example.test/api"),

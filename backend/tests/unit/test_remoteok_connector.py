@@ -63,6 +63,39 @@ async def test_connector_keeps_partial_source_entries_and_original_payload() -> 
 
 
 @pytest.mark.asyncio
+async def test_connector_skips_documented_feed_metadata_and_carries_attribution_notice():
+    offer_payload = _fixture("offer_list.json")[0]
+    metadata = {
+        "last_updated": 1790438426,
+        "legal": "Credit Remote OK as source and link the original job URL.",
+    }
+    response_body = [metadata, offer_payload]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json=response_body)
+    )) as client:
+        offers = await RemoteOKConnector(
+            HttpJsonFetcher(client=client), ENDPOINT, clock=lambda: RETRIEVED_AT
+        ).search(SearchCriteria())
+
+    assert len(offers) == 1
+    assert offers[0].payload == offer_payload
+    assert offers[0].source_id == "735421"
+    assert offers[0].provenance["item_index"] == 1
+    assert offers[0].provenance["feed_last_updated"] == 1790438426
+    assert offers[0].provenance["attribution_notice"] == metadata["legal"]
+
+
+@pytest.mark.asyncio
+async def test_connector_rejects_malformed_feed_metadata():
+    response_body = [{"last_updated": "recent", "legal": "terms"}]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json=response_body)
+    )) as client:
+        with pytest.raises(ConnectorError, match="metadata is malformed"):
+            await RemoteOKConnector(HttpJsonFetcher(client=client), ENDPOINT).search(SearchCriteria())
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("body", [{"jobs": []}, ["not-an-object"]])
 async def test_connector_rejects_invalid_feed_shapes(body: object) -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))) as client:

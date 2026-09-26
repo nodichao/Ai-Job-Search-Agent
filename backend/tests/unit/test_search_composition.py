@@ -26,7 +26,10 @@ def test_remoteok_requires_explicit_opt_in():
     assert not next(state for state in disabled.connectors if state.name == "RemoteOK").active_for_search
 
     enabled = build_search_runtime(Settings(remoteok_enabled=True), fetcher=HttpJsonFetcher(timeout_seconds=1))
-    assert next(state for state in enabled.connectors if state.name == "RemoteOK").active_for_search
+    remoteok_state = next(state for state in enabled.connectors if state.name == "RemoteOK")
+    assert remoteok_state.active_for_search
+    assert remoteok_state.status == "development"
+    assert "storage terms" in remoteok_state.reason
 
 
 def test_greenhouse_stays_inactive_without_production_normalizer():

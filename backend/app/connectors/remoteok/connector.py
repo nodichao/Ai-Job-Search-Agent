@@ -1,4 +1,4 @@
-"""RemoteOK JSON collection. Endpoint injection is required because project docs do not establish its URL."""
+"""RemoteOK public JSON feed collection with source attribution provenance."""
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -38,17 +38,41 @@ class RemoteOKConnector:
     async def search(self, criteria: SearchCriteria) -> list[RawOffer]:
         """Fetch the documented JSON feed; criteria are accepted but not translated.
 
-        No RemoteOK query parameter or pagination behavior is established in the
-        project references, so this method deliberately sends neither.
+        Remote OK's FAQ currently documents ``tag``/``tags`` filters, but the
+        mapping from generic SearchCriteria fields to those parameters is not
+        established. This connector therefore sends no inferred filters and
+        does not invent pagination.
         """
         del criteria
         payload: Any = await self._fetcher.get(self._request_url)
         if not isinstance(payload, list):
             raise ConnectorError("RemoteOK JSON response must be a list")
 
+        feed_metadata: dict[str, Any] = {}
+        items = payload
+        if payload and isinstance(payload[0], dict) and (
+            "legal" in payload[0] or "last_updated" in payload[0]
+        ):
+            metadata = payload[0]
+            last_updated = metadata.get("last_updated")
+            legal = metadata.get("legal")
+            if (
+                isinstance(last_updated, bool)
+                or not isinstance(last_updated, int)
+                or last_updated < 0
+                or not isinstance(legal, str)
+                or not legal.strip()
+            ):
+                raise ConnectorError("RemoteOK feed metadata is malformed")
+            feed_metadata = {
+                "feed_last_updated": last_updated,
+                "attribution_notice": legal,
+            }
+            items = payload[1:]
+
         retrieved_at = self._clock()
         offers: list[RawOffer] = []
-        for index, item in enumerate(payload):
+        for index, item in enumerate(items, start=len(payload) - len(items)):
             if not isinstance(item, dict):
                 raise ConnectorError(f"RemoteOK item at index {index} must be a JSON object")
             raw_id = item.get("id")
@@ -66,6 +90,7 @@ class RemoteOKConnector:
                         "item_index": index,
                         "attribution_required": True,
                         "source_link_required": True,
+                        **feed_metadata,
                     },
                 )
             )
