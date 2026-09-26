@@ -165,6 +165,27 @@ async def test_api_with_one_enabled_connector_returns_normalized_results():
 
 
 @pytest.mark.asyncio
+async def test_pipeline_deduplicates_normalized_offers_before_filtering_and_api_output():
+    fixture = json.loads((FIXTURES / "remoteok" / "offer_list.json").read_text(encoding="utf-8"))[0]
+    duplicate = {**fixture, "id": fixture["id"] + 1}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=[fixture, duplicate])
+    )) as source_client:
+        app = create_app(
+            Settings(remoteok_enabled=True, remoteok_endpoint="https://remoteok.example.test/api"),
+            fetcher=HttpJsonFetcher(client=source_client),
+        )
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/search", json={"profile": {}, "preferences": {}})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["total"] == 1
+    assert len(body["matches"]) + len(body["excluded"]) == 1
+    assert body["results"][0]["identity"]["sourceId"] == str(fixture["id"])
+
+
+@pytest.mark.asyncio
 async def test_configured_source_with_no_offers_is_distinct_from_source_failure():
     from app.services.connector_runtime import ConnectorAvailability, SearchRuntime
     from app.services.normalization_service import NormalizationService

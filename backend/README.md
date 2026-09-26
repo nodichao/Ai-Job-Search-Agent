@@ -4,11 +4,11 @@ FastAPI modular monolith. The implemented search path is:
 
 ```text
 POST /api/search → SearchCriteria → enabled connectors → RawOffer
-                 → source normalizers → JobOffer → filtering → matching
+                 → source normalizers → JobOffer → deduplication → filtering → matching
                  → explanation → recommendation → ranking
 ```
 
-Collection, normalization, filtering, matching, explanation, recommendation, and ranking remain separate services. Deduplication, LLM explanation, CV parsing, and application submission are not part of this path.
+Collection, normalization, deduplication, filtering, matching, explanation, recommendation, and ranking remain separate services. LLM explanation, CV parsing, and application submission are not part of this path.
 
 ## Run locally
 
@@ -43,6 +43,8 @@ python -m scripts.remoteok_smoke --confirm-one-off-read
 This explicitly requested script makes one GET with no retry, normalizes responses in memory, prints only counts and whether attribution metadata was present, and does not save or print offer payloads. It leaves the connector lifecycle at `development`. A successful check establishes technical retrieval only. Do not use or display collected offers in an aggregator until the required source credit and followed links are implemented in the consuming UI and outstanding storage/retention terms have been resolved. Do not run it automatically or in CI.
 
 ## Search routes
+
+After normalization, search removes duplicate offers before filtering. It keeps the first offer in collection order when evidence matches the same non-empty source name and source ID, a conservatively normalized offer URL, or (across different sources) exact normalized company/title plus an overlapping explicit location. URL query strings are retained. Missing company, title, location, or identity evidence does not create a duplicate. No fields are merged; exact company/title/location matching can miss equivalent offers with different wording or location formatting.
 
 `POST /api/search` accepts the existing `profile` and `preferences` request shape. Search criteria are copied from preferences; the profile and preferences are used by the deterministic matching stage. Results are canonical `JobOffer` objects. `meta.sources` lists sources that returned normalized, retained offers.
 
