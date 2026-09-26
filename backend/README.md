@@ -8,7 +8,7 @@ POST /api/search → SearchCriteria → enabled connectors → RawOffer
                  → explanation → recommendation → ranking
 ```
 
-Collection, normalization, deduplication, filtering, matching, explanation, recommendation, and ranking remain separate services. LLM explanation, CV parsing, and application submission are not part of this path.
+Collection, normalization, deduplication, filtering, matching, explanation, recommendation, and ranking remain separate services. CV extraction is a separate profile API operation. LLM explanation and application submission are not part of the search path.
 
 ## Run locally
 
@@ -127,7 +127,11 @@ Example responses (GET returns the same resource shape; PATCH returns the update
 
 These endpoints can also be entered in Postman or Insomnia with the shown JSON request bodies.
 
-`POST /api/search` keeps its existing required request body containing both `profile` and `preferences`. Saving settings does not silently change search behavior; callers can GET the saved records and send them in that body. The backend remains single-user and unauthenticated. `POST /api/profile/parse-cv` remains `501 Not Implemented`; no CV extraction or parsing is performed.
+`POST /api/search` keeps its existing required request body containing both `profile` and `preferences`. Saving settings does not silently change search behavior; callers can GET the saved records and send them in that body. The backend remains single-user and unauthenticated.
+
+### CV profile extraction
+
+`POST /api/profile/parse-cv` accepts either JSON `{"cv_text":"..."}` (up to 100,000 characters) or one `multipart/form-data` field named `file` containing a PDF or DOCX (up to 5 MiB). File extension and MIME type must agree. Text extraction runs in memory; encrypted PDFs, malformed documents, empty extracted text, and oversized inputs are rejected. The configured `OPENAI_API_KEY` and `LLM_MODEL` are used only when this endpoint is called. A structured response is validated as `UserProfile`; absent or ambiguous fields remain empty or `null`, and `rawSourceMetadata` is empty. Extraction does not save or overwrite `/api/profile`; clients may explicitly save the returned profile with `PUT /api/profile`. Validation failures return 4xx and provider failures return a generic 502. CV text is sent to the configured LLM provider and is not logged or persisted by this endpoint. See [`docs/implementation/cv-profile-extraction.md`](../docs/implementation/cv-profile-extraction.md) for extraction limits and known limitations.
 
 Example request:
 

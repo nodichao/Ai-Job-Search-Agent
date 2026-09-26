@@ -7,6 +7,8 @@ from app.api.shortlist import router as shortlist_router
 from app.api.preferences import router as preferences_router
 from app.core.logging import configure_logging
 from app.core.config import Settings
+from app.llm.base import LLMService
+from app.llm.openai_service import OpenAILLMService
 from app.connectors.common.http import HttpJsonFetcher
 from app.services.connector_runtime import SearchRuntime, build_search_runtime
 from app.repositories.shortlist_repository import ShortlistRepository
@@ -15,6 +17,7 @@ from app.services.shortlist_service import ShortlistService
 from app.repositories.user_settings_repository import UserSettingsRepository
 from app.repositories.sqlite_user_settings_repository import SQLiteUserSettingsRepository
 from app.services.user_settings_service import UserSettingsService
+from app.services.profile_service import ProfileService
 
 configure_logging()
 
@@ -26,6 +29,7 @@ def create_app(
     fetcher: HttpJsonFetcher | None = None,
     shortlist_repository: ShortlistRepository | None = None,
     user_settings_repository: UserSettingsRepository | None = None,
+    llm_service: LLMService | None = None,
 ) -> FastAPI:
     application = FastAPI(title="AI Job Search Agent API", version="0.1.0")
     app_settings = settings or Settings.from_env()
@@ -34,6 +38,11 @@ def create_app(
     application.state.shortlist_service = ShortlistService(repository)
     settings_repository = user_settings_repository or SQLiteUserSettingsRepository(app_settings.database_url)
     application.state.user_settings_service = UserSettingsService(settings_repository)
+    application.state.profile_service = ProfileService(llm_service or OpenAILLMService(
+        api_key=app_settings.openai_api_key,
+        model=app_settings.llm_model,
+        timeout_seconds=app_settings.request_timeout_seconds,
+    ))
     application.include_router(health_router)
     application.include_router(profile_router)
     application.include_router(search_router)
