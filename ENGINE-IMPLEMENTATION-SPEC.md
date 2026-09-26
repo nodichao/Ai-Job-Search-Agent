@@ -764,12 +764,35 @@ Create:
 -   `Dockerfile`;
 -   `README.md`.
 
-Docker requirements:
+### Deployment strategy
+
+Docker is the **reproducible runtime/package**, not the deployment
+platform. The application must remain deployable both directly from a
+Python environment and from the Docker image.
+
+The backend must not contain deployment-platform-specific business
+logic. Deployment platforms are interchangeable as long as they support
+the application runtime and required environment variables.
+
+Initial deployment targets may include:
+
+-   Render;
+-   Railway;
+-   Google Cloud Run;
+-   other platforms compatible with the containerized FastAPI
+    application.
+
+Do not introduce platform-specific code or infrastructure unless a
+deployment target is explicitly selected later.
+
+### Docker requirements
 
 -   slim Python base;
 -   non-root user;
 -   environment-driven configuration;
--   configurable `$PORT`.
+-   configurable `$PORT`;
+-   reproducible dependency installation;
+-   health-compatible HTTP startup.
 
 Startup:
 
@@ -777,8 +800,16 @@ Startup:
 uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 ```
 
+The same startup command must work in a standard Python environment and
+inside the Docker container.
+
 SQLite is acceptable for the POC. Use PostgreSQL only if the system
-later requires multi-instance persistence.
+later requires multi-instance persistence or the selected deployment
+environment makes persistent local storage unsuitable.
+
+Deployment configuration should therefore be kept separate from domain
+and application logic so that moving from one hosting provider to
+another does not require architectural changes.
 
 ## 22. Definition of Done
 
