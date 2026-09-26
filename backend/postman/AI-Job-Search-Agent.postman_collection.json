@@ -1,0 +1,155 @@
+{
+  "info": {
+    "_postman_id": "8b39f3d0-7a8b-4cb0-8b95-1f982c9c2d11",
+    "name": "AI Job Search Agent — Local MVP workflow",
+    "description": "Runs the single-user HTTP workflow against a local backend. Keep REMOTEOK_ENABLED and LEVER_ENABLED false to avoid live source requests. If search returns no results, the collection uses its explicit Postman Demo JobOffer fixture to exercise shortlist endpoints. The deterministic fake connector workflow is exercised by backend integration tests, not by this Postman fixture.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000", "type": "string" },
+    { "key": "profileJson", "value": "{}", "type": "string" },
+    { "key": "preferencesJson", "value": "{}", "type": "string" },
+    { "key": "searchOffer", "value": "{}", "type": "string" },
+    { "key": "shortlistId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "01 — Health",
+      "description": "Confirms the local FastAPI application is responding.",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('health returns 200', function () { pm.response.to.have.status(200); });",
+        "pm.test('health status is ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+      ] } }]
+    },
+    {
+      "name": "02 — Replace profile",
+      "description": "Creates or replaces the single local UserProfile.",
+      "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"skills\": [\"Python\", \"SQL\"],\n  \"jobTitles\": [\"Platform Engineer\"],\n  \"totalExperienceYears\": 5,\n  \"languages\": [\"English\", \"French\"]\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/profile" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('profile PUT returns 200', function () { pm.response.to.have.status(200); });",
+        "const profile = pm.response.json();",
+        "pm.test('profile response has canonical fields', function () { pm.expect(profile.skills).to.include('Python'); pm.expect(profile.jobTitles).to.include('Platform Engineer'); });",
+        "pm.collectionVariables.set('profileJson', JSON.stringify(profile));"
+      ] } }]
+    },
+    {
+      "name": "03 — Get profile",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/profile" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('profile GET returns 200', function () { pm.response.to.have.status(200); });",
+        "pm.test('profile is persisted', function () { pm.expect(pm.response.json().skills).to.include('Python'); });"
+      ] } }]
+    },
+    {
+      "name": "04 — Patch profile",
+      "description": "Updates selected fields while retaining the rest of the saved profile.",
+      "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"skills\": [\"Python\", \"SQL\", \"Docker\"]\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/profile" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('profile PATCH returns 200', function () { pm.response.to.have.status(200); });",
+        "const profile = pm.response.json();",
+        "pm.test('PATCH preserves other profile fields', function () { pm.expect(profile.jobTitles).to.include('Platform Engineer'); pm.expect(profile.skills).to.include('Docker'); });",
+        "pm.collectionVariables.set('profileJson', JSON.stringify(profile));"
+      ] } }]
+    },
+    {
+      "name": "05 — Replace preferences",
+      "description": "Creates or replaces SearchPreferences using the current domain fields.",
+      "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"jobTitles\": [\"Platform Engineer\"],\n  \"locations\": [\"Dakar\", \"Remote\"],\n  \"countries\": [\"SN\"],\n  \"remote\": true,\n  \"skills\": [\"Python\"],\n  \"salary\": {\"minimum\": 1000, \"currency\": \"USD\", \"period\": \"YEAR\"},\n  \"preferenceStrength\": {\"locations\": \"PREFERRED\"}\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/preferences" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('preferences PUT returns 200', function () { pm.response.to.have.status(200); });",
+        "const preferences = pm.response.json();",
+        "pm.test('preferences response has expected fields', function () { pm.expect(preferences.jobTitles).to.include('Platform Engineer'); pm.expect(preferences.salary.currency).to.eql('USD'); });",
+        "pm.collectionVariables.set('preferencesJson', JSON.stringify(preferences));"
+      ] } }]
+    },
+    {
+      "name": "06 — Get preferences",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/preferences" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('preferences GET returns 200', function () { pm.response.to.have.status(200); });",
+        "pm.test('preferences are persisted', function () { pm.expect(pm.response.json().locations).to.include('Dakar'); });"
+      ] } }]
+    },
+    {
+      "name": "07 — Patch preferences",
+      "description": "Patches one nested salary field; minimum and currency must be preserved.",
+      "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"salary\": {\"maximum\": 5000}\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/preferences" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('preferences PATCH returns 200', function () { pm.response.to.have.status(200); });",
+        "const preferences = pm.response.json();",
+        "pm.test('nested salary PATCH preserves existing fields', function () { pm.expect(preferences.salary.minimum).to.eql(1000); pm.expect(preferences.salary.maximum).to.eql(5000); pm.expect(preferences.salary.currency).to.eql('USD'); });",
+        "pm.collectionVariables.set('preferencesJson', JSON.stringify(preferences));"
+      ] } }]
+    },
+    {
+      "name": "08 — Search (local API; fixture fallback when empty)",
+      "description": "Uses the existing explicit profile/preferences request contract. With all connectors disabled the API should return an empty result; a canonical Postman Demo fixture is then selected only to exercise shortlist HTTP operations. Automated tests cover search with an injected fixture connector.",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"profile\": {{profileJson}},\n  \"preferences\": {{preferencesJson}}\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/search" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('search returns 200', function () { pm.response.to.have.status(200); });",
+        "const body = pm.response.json();",
+        "pm.test('search response has stable top-level contract', function () { ['results', 'matches', 'excluded', 'ranking', 'meta'].forEach(function (key) { pm.expect(body).to.have.property(key); }); });",
+        "let offer = body.results.length ? body.results[0] : null;",
+        "if (!offer) { offer = { identity: { id: 'postman-demo-001', sourceId: 'postman-demo-001', slug: 'postman-demo-job', offerUrl: 'https://example.invalid/jobs/postman-demo-001' }, source: { name: 'Postman Demo', url: 'https://example.invalid/', retrievedAt: '2026-09-26T00:00:00Z' }, position: { title: 'Platform Engineer', sourceSummary: 'Local Postman demonstration fixture' } }; }",
+        "pm.test('selected offer has canonical JobOffer identity/source/position', function () { pm.expect(offer.identity).to.be.an('object'); pm.expect(offer.source.name).to.be.a('string'); pm.expect(offer.position.title).to.be.a('string'); pm.expect(offer).not.to.have.property('matching'); pm.expect(offer).not.to.have.property('recommendation'); });",
+        "pm.collectionVariables.set('searchOffer', JSON.stringify(offer));"
+      ] } }]
+    },
+    {
+      "name": "09 — Save search offer to shortlist",
+      "description": "Saves the canonical search result, or the documented local Postman fixture fallback.",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{{searchOffer}}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/shortlist" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('shortlist creation returns 201', function () { pm.response.to.have.status(201); });",
+        "const entry = pm.response.json();",
+        "pm.test('entry contains a canonical snapshot without match results', function () { pm.expect(entry.status).to.eql('SAVED'); pm.expect(entry.offer.identity).to.be.an('object'); pm.expect(entry.offer).not.to.have.property('matching'); pm.expect(entry.offer).not.to.have.property('recommendation'); });",
+        "pm.collectionVariables.set('shortlistId', entry.id);"
+      ] } }]
+    },
+    {
+      "name": "10 — Duplicate shortlist offer (expect 409)",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{{searchOffer}}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/shortlist" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('duplicate returns 409', function () { pm.response.to.have.status(409); });"] } }]
+    },
+    {
+      "name": "11 — Invalid shortlist payload (expect 422)",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"unexpectedField\": true\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/shortlist" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('invalid JobOffer returns 422', function () { pm.response.to.have.status(422); });"] } }]
+    },
+    {
+      "name": "12 — List shortlist",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/shortlist" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('shortlist list returns 200', function () { pm.response.to.have.status(200); });",
+        "pm.test('saved entry appears in list', function () { pm.expect(pm.response.json().some(function (entry) { return entry.id === pm.collectionVariables.get('shortlistId'); })).to.eql(true); });"
+      ] } }]
+    },
+    {
+      "name": "13 — Get shortlist entry",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/shortlist/{{shortlistId}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('shortlist get returns 200', function () { pm.response.to.have.status(200); });",
+        "pm.test('entry ID matches the created resource', function () { pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('shortlistId')); });"
+      ] } }]
+    },
+    {
+      "name": "14 — Update shortlist status",
+      "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"INTERESTED\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/shortlist/{{shortlistId}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status update returns 200', function () { pm.response.to.have.status(200); });",
+        "pm.test('user-declared status is returned', function () { pm.expect(pm.response.json().status).to.eql('INTERESTED'); });"
+      ] } }]
+    },
+    {
+      "name": "15 — Delete shortlist entry",
+      "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/shortlist/{{shortlistId}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('delete returns 204', function () { pm.response.to.have.status(204); });"] } }]
+    },
+    {
+      "name": "16 — Confirm deleted entry is missing (expect 404)",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/shortlist/{{shortlistId}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('deleted entry returns 404', function () { pm.response.to.have.status(404); });"] } }]
+    }
+  ]
+}

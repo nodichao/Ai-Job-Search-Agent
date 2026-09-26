@@ -139,3 +139,20 @@ Run all backend tests from this directory:
 ```sh
 python -m pytest -q
 ```
+
+## End-to-end API workflow and Postman
+
+For an offline Postman run, start a separate local database and explicitly keep source connectors disabled. Run these commands from `backend/` in PowerShell:
+
+```powershell
+$env:DATABASE_URL = 'sqlite:///./postman-test.db'
+$env:REMOTEOK_ENABLED = 'false'
+$env:LEVER_ENABLED = 'false'
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Import [`postman/AI-Job-Search-Agent.postman_collection.json`](postman/AI-Job-Search-Agent.postman_collection.json) into Postman. Its collection variable `baseUrl` defaults to `http://localhost:8000`; change it in the collection's Variables tab if the API is hosted elsewhere. Run the requests in their numbered order with Collection Runner. The scripts capture the search offer and shortlist ID from responses. With connectors disabled, search returns no offers and the collection chooses an explicitly labeled canonical `Postman Demo` fixture for the shortlist steps. Integration tests separately exercise the API search pipeline with an injected deterministic fixture connector.
+
+Use a disposable database for this workflow. To reset only the Postman data, stop the backend first, confirm its `DATABASE_URL` is `sqlite:///./postman-test.db`, then remove `postman-test.db` from `backend/` before restarting. Do not remove the default `job_agent.db` if it contains data you want to keep. Profile and preferences are replaced/updated by this workflow; the shortlist fixture is deleted at the end. If a run is interrupted before deletion, reset the dedicated database before rerunning so the duplicate request behaves as documented.
+
+The mocked search path validates the API contract and shortlist flow; it does not establish that a source connector is operational. A run with a connector enabled may make external source requests, so keep both connector settings disabled for offline validation. The API remains single-user and unauthenticated, does not load saved profile/preferences automatically for search, and never submits applications.
