@@ -32,3 +32,19 @@ class NormalizationError(JobAgentError):
 
 class MatchingError(JobAgentError):
     pass
+
+
+class ShortlistError(JobAgentError):
+    pass
+
+
+class ShortlistIdentityError(ShortlistError):
+    pass
+
+
+class ShortlistDuplicateError(ShortlistError):
+    pass
+
+
+class ShortlistPersistenceError(ShortlistError):
+    pass

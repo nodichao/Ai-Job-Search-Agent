@@ -42,6 +42,12 @@ Each retained match includes a deterministic `recommendation` decision. The `ran
 
 `POST /api/search/from-text` remains `501 Not Implemented`: preference parsing depends on the LLM path and is outside this task. `GET /health` returns the health status.
 
+## Shortlist
+
+The backend persists a user-selected copy of a canonical `JobOffer` in SQLite. `POST /api/shortlist` accepts the offer object directly from `POST /api/search` results; it does not require or save matching/recommendation data. Duplicate stable offer identities return `409`. The entry starts at `SAVED`; use `PATCH /api/shortlist/{id}` with `{"status":"INTERESTED"}`, `APPLYING`, `APPLIED`, `REJECTED`, `ARCHIVED`, or `SAVED` to update it. `APPLIED` records the user's declaration only and never submits an application. `GET /api/shortlist`, `GET /api/shortlist/{id}`, and `DELETE /api/shortlist/{id}` list, retrieve, and remove saved entries.
+
+`DATABASE_URL` defaults to `sqlite:///./job_agent.db`, resolved from the backend process working directory. SQLite creates the shortlist table on its first use. This MVP has no authentication: the database represents one shared local shortlist, not user-isolated data. File-backed SQLite is supported; database errors return `503` without revealing connection details. See `docs/implementation/shortlist.md` for identity rules and limitations.
+
 Example request:
 
 ```json
