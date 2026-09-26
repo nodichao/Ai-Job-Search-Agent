@@ -52,7 +52,7 @@ Search now applies explicit post-retrieval filtering and deterministic matching.
 
 Each retained match includes a deterministic `recommendation` decision. The `ranking` object orders only recommended offers, with explicit ranks and their canonical source provenance. `results` still includes every offer retained by filtering, even when recommendation says not to present it or evidence is insufficient. Defaults are configurable with `RECOMMENDATION_SCORE_THRESHOLD=60` and `RECOMMENDATION_MINIMUM_CONFIDENCE=0.5`; these are initial presentation-policy thresholds, not calibrated hiring estimates. The policy, decision reasons, order, and tie-break rules are documented in `docs/implementation/recommendation-and-ranking.md`.
 
-`POST /api/search/from-text` remains `501 Not Implemented`: preference parsing depends on the LLM path and is outside this task. `GET /health` returns the health status.
+`POST /api/search/from-text` accepts the same required `profile` plus `preferences_text` (1–20,000 characters). It uses the configured LLM to structure only explicitly stated search preferences, then calls the same criteria builder and search pipeline as `/api/search`; it returns the same response shape. Parsed preferences and the supplied profile are not persisted. Empty text returns 422; malformed requests return 422; LLM/provider or structured-output failures return a generic 502 and do not start a search. Quoted or pasted third-party content is treated as untrusted. Configure `OPENAI_API_KEY`, `LLM_MODEL`, and `REQUEST_TIMEOUT_SECONDS` as for CV extraction. See [`docs/implementation/natural-language-search.md`](../docs/implementation/natural-language-search.md). `GET /health` returns the health status.
 
 ## Shortlist
 

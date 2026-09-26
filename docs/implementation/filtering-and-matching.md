@@ -61,4 +61,7 @@ retained by explicit required filtering. It adds:
 `meta.total` and `meta.sources` describe retained results. Existing connector
 failure metadata is unchanged. This API change is additive except that
 `results` now excludes offers with a known required conflict. Unknown required
-criteria do not exclude. `/api/search/from-text` remains unimplemented.
+criteria do not exclude. `/api/search/from-text` parses explicit user
+preferences with the configured structured LLM adapter and then uses the same
+criteria builder and search pipeline; it does not persist parsed preferences.
+See `natural-language-search.md` for its request and error behavior.

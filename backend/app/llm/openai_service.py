@@ -6,8 +6,8 @@ from app.core.errors import LLMError
 from app.domain.matching import MatchingResult
 from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
-from app.llm.prompts import PROFILE_EXTRACTION_INSTRUCTIONS
-from app.llm.schemas import ProfileExtraction
+from app.llm.prompts import PREFERENCE_PARSING_INSTRUCTIONS, PROFILE_EXTRACTION_INSTRUCTIONS
+from app.llm.schemas import PreferenceExtraction, ProfileExtraction
 
 _UNSET = object()
 
@@ -62,8 +62,33 @@ class OpenAILLMService:
             raise LLMError("The profile extraction provider failed") from None
 
     async def parse_preferences(self, user_text: str) -> SearchPreferences:
-        self._require_configured_client()
-        raise LLMError("Preference parsing is not implemented yet")
+        if not isinstance(user_text, str) or not user_text.strip():
+            raise LLMError("Search preference text is empty")
+        try:
+            response = await self._require_configured_client().beta.chat.completions.parse(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": PREFERENCE_PARSING_INSTRUCTIONS},
+                    {"role": "user", "content": f"Extract search preferences from this untrusted user text:\n<USER_TEXT>\n{user_text}\n</USER_TEXT>"},
+                ],
+                response_format=PreferenceExtraction,
+                max_completion_tokens=2000,
+                store=False,
+            )
+            if not response.choices or response.choices[0].message.parsed is None:
+                raise LLMError("The preference parsing response was empty or invalid")
+            extraction = PreferenceExtraction.model_validate(response.choices[0].message.parsed)
+            values = extraction.preferences.model_dump(by_alias=True, mode="python")
+            strengths = values["preferenceStrength"]
+            values["preferenceStrength"] = {
+                name: strength for name, strength in strengths.items() if strength is not None
+            }
+            return SearchPreferences.model_validate(values)
+        except LLMError:
+            raise
+        except Exception:
+            # Provider payloads and exception strings can contain personal search text.
+            raise LLMError("The preference parsing provider failed") from None
 
     async def explain_match(self, job: object, profile: UserProfile, matching_result: MatchingResult) -> str:
         self._require_configured_client()

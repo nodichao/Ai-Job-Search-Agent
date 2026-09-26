@@ -23,9 +23,9 @@ def test_search_route_returns_empty_results_and_explicit_connector_states_by_def
     assert all(not item["activeForSearch"] for item in statuses.values())
 
 
-def test_search_from_text_remains_explicitly_unimplemented() -> None:
-    response = client.post("/api/search/from-text", json={"profile": {}, "preferences_text": "remote engineering"})
-    assert response.status_code == 501
+def test_search_from_text_validates_required_input_before_parsing() -> None:
+    response = client.post("/api/search/from-text", json={"profile": {}})
+    assert response.status_code == 422
 
 
 def test_search_rejects_invalid_request_data() -> None:

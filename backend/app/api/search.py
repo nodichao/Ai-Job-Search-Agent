@@ -1,6 +1,6 @@
 from time import perf_counter
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.job_offer import JobOffer, OfferIdentity
@@ -60,12 +60,15 @@ def _runtime(request: Request) -> SearchRuntime:
     return request.app.state.search_runtime
 
 
-@router.post("", response_model=SearchResponse)
-async def search(body: SearchRequest, request: Request) -> SearchResponse:
+async def _search_response(
+    request: Request,
+    profile: UserProfile,
+    preferences: SearchPreferences,
+) -> SearchResponse:
     runtime = _runtime(request)
-    criteria = criteria_from_preferences(body.preferences)
+    criteria = criteria_from_preferences(preferences)
     started = perf_counter()
-    pipeline_result = await runtime.pipeline.search(criteria, body.profile, body.preferences)
+    pipeline_result = await runtime.pipeline.search(criteria, profile, preferences)
     offers = pipeline_result.included_offers
     duration_ms = round((perf_counter() - started) * 1000)
     sources = list(dict.fromkeys(offer.source.name for offer in offers))
@@ -103,6 +106,18 @@ async def search(body: SearchRequest, request: Request) -> SearchResponse:
     )
 
 
-@router.post("/from-text", response_model=SearchResponse, status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def search_from_text(_request: SearchFromTextRequest) -> None:
-    raise HTTPException(status_code=501, detail="Preference parsing and job search are not implemented yet.")
+@router.post("", response_model=SearchResponse)
+async def search(body: SearchRequest, request: Request) -> SearchResponse:
+    return await _search_response(request, body.profile, body.preferences)
+
+
+@router.post("/from-text", response_model=SearchResponse)
+async def search_from_text(body: SearchFromTextRequest, request: Request) -> SearchResponse:
+    if not body.preferences_text.strip():
+        raise HTTPException(status_code=422, detail="preferences_text must not be empty")
+    try:
+        parsed = await request.app.state.llm_service.parse_preferences(body.preferences_text)
+        preferences = SearchPreferences.model_validate(parsed)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Preference parsing service is unavailable") from None
+    return await _search_response(request, body.profile, preferences)

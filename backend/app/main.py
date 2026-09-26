@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 
 from app.api.health import router as health_router
 from app.api.profile import router as profile_router
@@ -32,17 +34,31 @@ def create_app(
     llm_service: LLMService | None = None,
 ) -> FastAPI:
     application = FastAPI(title="AI Job Search Agent API", version="0.1.0")
+
+    @application.exception_handler(RequestValidationError)
+    async def redact_search_text_validation_input(request: Request, exc: RequestValidationError):
+        if request.url.path == "/api/search/from-text":
+            safe_errors = [
+                {"type": error.get("type", "value_error"), "loc": error.get("loc", ()),
+                 "msg": error.get("msg", "Invalid request")}
+                for error in exc.errors()
+            ]
+            exc = RequestValidationError(safe_errors)
+        return await request_validation_exception_handler(request, exc)
+
     app_settings = settings or Settings.from_env()
     application.state.search_runtime = runtime or build_search_runtime(app_settings, fetcher=fetcher)
     repository = shortlist_repository or SQLiteShortlistRepository(app_settings.database_url)
     application.state.shortlist_service = ShortlistService(repository)
     settings_repository = user_settings_repository or SQLiteUserSettingsRepository(app_settings.database_url)
     application.state.user_settings_service = UserSettingsService(settings_repository)
-    application.state.profile_service = ProfileService(llm_service or OpenAILLMService(
+    configured_llm = llm_service if llm_service is not None else OpenAILLMService(
         api_key=app_settings.openai_api_key,
         model=app_settings.llm_model,
         timeout_seconds=app_settings.request_timeout_seconds,
-    ))
+    )
+    application.state.llm_service = configured_llm
+    application.state.profile_service = ProfileService(configured_llm)
     application.include_router(health_router)
     application.include_router(profile_router)
     application.include_router(search_router)
