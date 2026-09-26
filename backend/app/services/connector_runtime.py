@@ -1,0 +1,118 @@
+"""Central, side-effect-free construction of configured search connectors."""
+from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.connectors.common.http import HttpJsonFetcher
+from app.connectors.lever import LeverConnector, LeverSiteContext
+from app.connectors.remoteok import RemoteOKConnector
+from app.connectors.common.retry import RetryPolicy
+from app.core.config import Settings
+from app.services.normalization_service import NormalizationService
+from app.services.search_pipeline import SearchPipeline
+from app.services.search_service import ConnectorBinding, SearchService
+
+
+class ConnectorAvailability(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    status: str
+    active_for_search: bool = Field(alias="activeForSearch")
+    reason: str
+
+
+@dataclass(frozen=True)
+class SearchRuntime:
+    pipeline: SearchPipeline
+    connectors: tuple[ConnectorAvailability, ...]
+
+
+def build_search_runtime(
+    settings: Settings,
+    *,
+    fetcher: HttpJsonFetcher | None = None,
+) -> SearchRuntime:
+    """Build configured connectors without performing network requests.
+
+    Sources whose current verification is pending remain opt-in. Greenhouse is
+    not constructed because the code has no production parser/normalizer.
+    """
+    http = fetcher or HttpJsonFetcher(
+        timeout_seconds=settings.request_timeout_seconds,
+        retry_policy=RetryPolicy(),
+    )
+    bindings: list[ConnectorBinding] = []
+    states: list[ConnectorAvailability] = []
+
+    if settings.remoteok_enabled and settings.remoteok_endpoint:
+        try:
+            remoteok = RemoteOKConnector(http, settings.remoteok_endpoint)
+        except ValueError:
+            states.append(ConnectorAvailability(
+                name="RemoteOK",
+                status="development",
+                activeForSearch=False,
+                reason="REMOTEOK_ENDPOINT must be an absolute HTTP(S) URL without embedded credentials.",
+            ))
+        else:
+            bindings.append(ConnectorBinding(remoteok))
+            states.append(ConnectorAvailability(
+                name="RemoteOK",
+                status="development",
+                activeForSearch=True,
+                reason="Explicitly enabled; live schema, request limits, and reuse conditions still require verification.",
+            ))
+    else:
+        reason = (
+            "REMOTEOK_ENDPOINT is missing."
+            if settings.remoteok_enabled
+            else "Disabled by default; set REMOTEOK_ENABLED=true to opt in."
+        )
+        states.append(ConnectorAvailability(
+            name="RemoteOK", status="development", activeForSearch=False, reason=reason
+        ))
+
+    if settings.lever_enabled and settings.lever_site and settings.lever_site.strip():
+        try:
+            context = LeverSiteContext(settings.lever_site)
+        except ValueError:
+            states.append(ConnectorAvailability(
+                name="Lever",
+                status="access pending",
+                activeForSearch=False,
+                reason="LEVER_SITE is invalid; no request will be made.",
+            ))
+        else:
+            bindings.append(ConnectorBinding(
+                LeverConnector(
+                    http,
+                    context,
+                    max_results=settings.max_results_per_source,
+                )
+            ))
+            states.append(ConnectorAvailability(
+                name="Lever",
+                status="access pending",
+                activeForSearch=True,
+                reason="Explicitly enabled for a configured SITE; third-party usage conditions remain pending.",
+            ))
+    else:
+        if not settings.lever_enabled:
+            reason = "Disabled by default; access and third-party usage conditions remain pending."
+        else:
+            reason = "LEVER_SITE is required; no request will be made without an explicit site."
+        states.append(ConnectorAvailability(
+            name="Lever", status="access pending", activeForSearch=False, reason=reason
+        ))
+
+    states.append(ConnectorAvailability(
+        name="Greenhouse",
+        status="access pending",
+        activeForSearch=False,
+        reason="No production parser/normalizer or employer authorization is configured.",
+    ))
+
+    search_service = SearchService(bindings)
+    pipeline = SearchPipeline(search_service, NormalizationService())
+    return SearchRuntime(pipeline=pipeline, connectors=tuple(states))

@@ -4,9 +4,27 @@ from app.api.health import router as health_router
 from app.api.profile import router as profile_router
 from app.api.search import router as search_router
 from app.core.logging import configure_logging
+from app.core.config import Settings
+from app.connectors.common.http import HttpJsonFetcher
+from app.services.connector_runtime import SearchRuntime, build_search_runtime
 
 configure_logging()
-app = FastAPI(title="AI Job Search Agent API", version="0.1.0")
-app.include_router(health_router)
-app.include_router(profile_router)
-app.include_router(search_router)
+
+
+def create_app(
+    settings: Settings | None = None,
+    *,
+    runtime: SearchRuntime | None = None,
+    fetcher: HttpJsonFetcher | None = None,
+) -> FastAPI:
+    application = FastAPI(title="AI Job Search Agent API", version="0.1.0")
+    application.state.search_runtime = runtime or build_search_runtime(
+        settings or Settings.from_env(), fetcher=fetcher
+    )
+    application.include_router(health_router)
+    application.include_router(profile_router)
+    application.include_router(search_router)
+    return application
+
+
+app = create_app()

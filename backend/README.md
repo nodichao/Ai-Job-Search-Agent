@@ -1,6 +1,13 @@
 # AI Job Search Agent backend
 
-Modular-monolith backend for the AI Job Search Agent. The current vertical implements the RemoteOK JSON collection boundary (`SearchCriteria` → `RawOffer`) and a separate source normalizer (`RawOffer` → canonical `JobOffer`). It does not run matching, scoring, recommendations, CV parsing, or LLM operations.
+FastAPI modular monolith. The implemented search path is:
+
+```text
+POST /api/search → SearchCriteria → enabled connectors → RawOffer
+                 → source normalizers → canonical JobOffer response
+```
+
+Collection and normalization remain separate services. There is no filtering, deduplication, matching, scoring, recommendation, LLM explanation, CV parsing, or application submission in this path.
 
 ## Run locally
 
@@ -10,26 +17,45 @@ Use Python 3.12+, create a virtual environment, install `requirements.txt`, then
 uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 ```
 
-Copy `.env.example` to `.env` and set environment variables as needed. No secret is committed. `GET /health` returns `{"status":"ok"}`. The generic `ConnectorBinding` used by `SearchService` receives `REMOTEOK_ENABLED` as its `enabled` value when the app composes a connector. The app does not construct one automatically because the project references do not specify the RemoteOK JSON endpoint. After supplying a verified endpoint, composition can use `SearchService([ConnectorBinding(remoteok_connector, enabled=settings.remoteok_enabled)])`.
+Copy `.env.example` to `.env`. Configuration is read from environment variables. Application construction does not make network requests; HTTP requests occur only when an enabled connector is used by `POST /api/search`.
 
-## RemoteOK vertical
+## Connector configuration
 
-`RemoteOKConnector` requires an endpoint to be injected explicitly. The project documents a public JSON feed and its observed fields, but does not record the exact endpoint URL or top-level response envelope. The current adapter accepts a JSON array of objects and rejects other shapes; confirm that envelope against an authorized endpoint before live use. It accepts `SearchCriteria` and deliberately sends no query parameters: dedicated search parameters and pagination behavior are not verified. The connector preserves source payloads and provenance in `RawOffer`; `RemoteOKNormalizer` performs the separate mapping to `JobOffer`.
+All sources are disabled by default.
 
-The source research says public JSON access does not require authentication, requires attribution, and requires a RemoteOK link. That does not establish permission for aggregation, storage, or redistribution. The implementation keeps this vertical in memory and does not add persistence. It does not infer an offer's `remote` eligibility from the source's overall remote-job scope. Tags are retained as categories because their precise skills taxonomy is not established. Salary currency, period, and type remain unknown. `epoch`, dates other than an ISO-formatted `date`, and pagination are not interpreted. Non-ISO or absent `date` values remain unknown.
+| Source | Configuration | Current behavior |
+|---|---|---|
+| RemoteOK | `REMOTEOK_ENABLED=true`; optional `REMOTEOK_ENDPOINT` defaults to the documented `https://remoteok.com/api`. | Can be explicitly enabled. Lifecycle remains `development`; live response shape, request limits, and reuse conditions are not fully verified. Attribution requirements are not implemented as a UI because this backend returns JSON only. |
+| Lever | `LEVER_ENABLED=true` and a required `LEVER_SITE`. | Can be explicitly enabled for that SITE using the global API origin. Lifecycle remains `access pending`; third-party use conditions, region choice, and pagination termination remain unresolved. |
+| Greenhouse | No activation setting is provided. | Not composed: the repository has no production parser or normalizer. The API requires a board context and applicable usage authorization. |
 
-## Tests
+`HIMALAYAS_ENABLED` is retained in settings for compatibility but no Himalayas connector is part of this task. Connector availability is returned in `meta.connectors`; a connector's lifecycle status is not a claim that it is operational. Connector failures are isolated and summarized in `meta.failedSources` without returning exception messages or raw payloads.
 
-Run `pytest` from this directory. RemoteOK connector and pipeline tests use local JSON fixtures and `httpx.MockTransport`; no test contacts RemoteOK.
+## Search routes
 
-## Lever vertical
+`POST /api/search` accepts the existing `profile` and `preferences` request shape. Search criteria are copied from preferences; the profile is validated but not used for matching or scoring. Results are canonical `JobOffer` objects. `meta.sources` lists sources that returned normalized offers.
 
-`LeverConnector` requires an explicit company `SITE`; it requests that site's postings and does not turn `SearchCriteria` into undocumented filters. It uses the documented `skip`, `limit`, and `mode=json` parameters, a configurable page size (default 20, as in the task-provided example), and the shared result cap. The shared paginator stops on an empty or short page and enforces the cap; a response exceeding the requested limit is rejected rather than silently truncated. The precise source-side termination convention and the default page size are not established by project research and should be verified before relying on exhaustive live collection. The configured `https://api.lever.co` host comes from the task-provided URL example, not the project reference documents.
+`POST /api/search/from-text` remains `501 Not Implemented`: preference parsing depends on the LLM path and is outside this task. `GET /health` returns the health status.
 
-`LeverNormalizer` maps documented `id`, `text`, and category values only. `allLocations` and `location` are retained as location strings; `commitment` is mapped only for recognized employment types; team and department are preserved. No remote eligibility, summary, compensation, offer URL, apply URL, or dates are inferred. The company name is optional context supplied by the caller. Public endpoint access does not by itself establish permission for aggregation, storage, redistribution, or application automation; source terms still require verification.
+Example request:
 
-## Greenhouse status
+```json
+{
+  "profile": {},
+  "preferences": {
+    "jobTitles": ["Platform Engineer"],
+    "countries": ["SN"],
+    "skills": ["Python"]
+  }
+}
+```
 
-Project references do not establish the Greenhouse board endpoint shape or response schema. `GreenhouseConnector` therefore requires an explicit board context, endpoint, and parser; it is a transport boundary only. The injected parser contract can create `RawOffer` values, but no built-in Greenhouse schema parser or `JobOffer` normalizer is claimed. The opaque fixture and test parser exercise dependency boundaries only; they do not represent a verified API response. Confirm the endpoint, schema, pagination, and applicable terms before configuring a real source.
+## Limitations and tests
 
-Run `pytest` from this directory. Lever, Greenhouse, and RemoteOK tests use local JSON fixtures and `httpx.MockTransport`; no test contacts these services. Greenhouse's test parser is synthetic because the project has no verified response schema.
+No connector is declared operational. Tests use local fixtures and `httpx.MockTransport`; they do not contact job sources or establish permission to store or redistribute their data. Greenhouse remains unavailable until a source-specific parser and normalizer are implemented and authorized. Lever is opt-in only and currently maps a subset of its documented fields. RemoteOK is opt-in only and its output must be displayed with the required source and offer links before use as an aggregator.
+
+Run all backend tests from this directory:
+
+```sh
+python -m pytest -q
+```

@@ -17,6 +17,17 @@ def test_settings_load_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.cors_origins == ("http://localhost:3000", "https://example.test")
 
 
+def test_connectors_default_to_disabled_and_load_explicit_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REMOTEOK_ENABLED", raising=False)
+    monkeypatch.delenv("LEVER_ENABLED", raising=False)
+    monkeypatch.setenv("LEVER_SITE", "example-site")
+    settings = Settings.from_env()
+    assert settings.remoteok_enabled is False
+    assert settings.lever_enabled is False
+    assert settings.remoteok_endpoint == "https://remoteok.com/api"
+    assert settings.lever_site == "example-site"
+
+
 def test_invalid_settings_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REMOTEOK_ENABLED", "sometimes")
     with pytest.raises(ConfigurationError):

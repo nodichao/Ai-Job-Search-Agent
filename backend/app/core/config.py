@@ -22,9 +22,11 @@ class Settings:
     openai_api_key: str | None = None
     llm_model: str = "gpt-5.6-luna"
     database_url: str = "sqlite:///./job_agent.db"
-    remoteok_enabled: bool = True
+    remoteok_enabled: bool = False
+    remoteok_endpoint: str = "https://remoteok.com/api"
     himalayas_enabled: bool = True
-    lever_enabled: bool = True
+    lever_enabled: bool = False
+    lever_site: str | None = None
     request_timeout_seconds: float = 15.0
     max_results_per_source: int = 100
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
@@ -47,9 +49,11 @@ class Settings:
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
             llm_model=os.getenv("LLM_MODEL", "gpt-5.6-luna"),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./job_agent.db"),
-            remoteok_enabled=_bool("REMOTEOK_ENABLED", True),
+            remoteok_enabled=_bool("REMOTEOK_ENABLED", False),
+            remoteok_endpoint=os.getenv("REMOTEOK_ENDPOINT", "https://remoteok.com/api").strip(),
             himalayas_enabled=_bool("HIMALAYAS_ENABLED", True),
-            lever_enabled=_bool("LEVER_ENABLED", True),
+            lever_enabled=_bool("LEVER_ENABLED", False),
+            lever_site=os.getenv("LEVER_SITE") or None,
             request_timeout_seconds=timeout,
             max_results_per_source=limit,
             cors_origins=origins,
