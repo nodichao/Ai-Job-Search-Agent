@@ -48,6 +48,75 @@ The backend persists a user-selected copy of a canonical `JobOffer` in SQLite. `
 
 `DATABASE_URL` defaults to `sqlite:///./job_agent.db`, resolved from the backend process working directory. SQLite creates the shortlist table on its first use. This MVP has no authentication: the database represents one shared local shortlist, not user-isolated data. File-backed SQLite is supported; database errors return `503` without revealing connection details. See `docs/implementation/shortlist.md` for identity rules and limitations.
 
+## Persistent profile and search preferences
+
+The backend stores one `UserProfile` and one `SearchPreferences` record in the same file-backed SQLite database selected by `DATABASE_URL`. The settings table is created on first use. `PUT` replaces one record, while `PATCH` updates only supplied fields; nested objects such as `salary` and `preferenceStrength` are merged. Profile and preferences are independent. A record that has not been saved returns `404`. Invalid values and unknown fields return `422`; storage failures return a generic `503`.
+
+To configure the database, set `DATABASE_URL` before starting the backend. For example, in PowerShell use `$env:DATABASE_URL = 'sqlite:///./job_agent.db'`; use a file-backed URL, with relative paths resolved from the backend process working directory. The default is the same URL.
+
+| Method | Endpoint | Behavior |
+|---|---|---|
+| `GET` | `/api/profile` | Retrieve the saved profile. |
+| `PUT` | `/api/profile` | Create or replace the profile using the `UserProfile` fields. |
+| `PATCH` | `/api/profile` | Partially update an existing profile. |
+| `GET` | `/api/preferences` | Retrieve saved search preferences. |
+| `PUT` | `/api/preferences` | Create or replace preferences using the `SearchPreferences` fields. |
+| `PATCH` | `/api/preferences` | Partially update existing preferences. |
+
+Example requests (replace `localhost:8000` if the backend uses another host):
+
+```bash
+curl -X PUT http://localhost:8000/api/profile \
+  -H 'Content-Type: application/json' \
+  -d '{"skills":["Python","SQL"],"jobTitles":["Backend Engineer"],"totalExperienceYears":4}'
+
+curl -X PUT http://localhost:8000/api/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"jobTitles":["Platform Engineer"],"locations":["Dakar"],"remote":true,"salary":{"minimum":1200,"currency":"USD"},"preferenceStrength":{"locations":"REQUIRED"}}'
+
+curl -X PATCH http://localhost:8000/api/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"salary":{"maximum":5000}}'
+
+curl http://localhost:8000/api/profile
+curl http://localhost:8000/api/preferences
+```
+
+Example responses (GET returns the same resource shape; PATCH returns the updated full resource):
+
+```json
+{
+  "skills": ["Python", "SQL"],
+  "jobTitles": ["Backend Engineer"],
+  "experience": [],
+  "totalExperienceYears": 4,
+  "education": [],
+  "languages": [],
+  "domains": [],
+  "rawSourceMetadata": {}
+}
+```
+
+```json
+{
+  "jobTitles": ["Platform Engineer"],
+  "locations": ["Dakar"],
+  "countries": [],
+  "remote": true,
+  "seniority": [],
+  "employmentTypes": [],
+  "skills": [],
+  "salary": {"minimum": 1200, "maximum": 5000, "currency": "USD", "period": null},
+  "companies": [],
+  "timezone": null,
+  "preferenceStrength": {"locations": "REQUIRED"}
+}
+```
+
+These endpoints can also be entered in Postman or Insomnia with the shown JSON request bodies.
+
+`POST /api/search` keeps its existing required request body containing both `profile` and `preferences`. Saving settings does not silently change search behavior; callers can GET the saved records and send them in that body. The backend remains single-user and unauthenticated. `POST /api/profile/parse-cv` remains `501 Not Implemented`; no CV extraction or parsing is performed.
+
 Example request:
 
 ```json

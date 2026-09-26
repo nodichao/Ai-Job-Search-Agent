@@ -34,6 +34,10 @@ class MatchingError(JobAgentError):
     pass
 
 
+class PersistenceError(JobAgentError):
+    pass
+
+
 class ShortlistError(JobAgentError):
     pass
 
@@ -46,5 +50,5 @@ class ShortlistDuplicateError(ShortlistError):
     pass
 
 
-class ShortlistPersistenceError(ShortlistError):
+class ShortlistPersistenceError(ShortlistError, PersistenceError):
     pass
