@@ -1,0 +1,19 @@
+[
+  {
+    "id": 735421,
+    "slug": "senior-platform-engineer-exampleco",
+    "date": "2026-09-18T09:30:00+00:00",
+    "epoch": 1790328600,
+    "company": "ExampleCo",
+    "company_logo": "https://cdn.example.invalid/exampleco.png",
+    "position": "Senior Platform Engineer",
+    "tags": ["python", "platform", "distributed-systems"],
+    "description": "Build and maintain platform services.",
+    "location": "Europe or Africa",
+    "apply_url": "https://apply.example.invalid/jobs/735421",
+    "salary_min": 85000,
+    "salary_max": 115000,
+    "url": "https://remoteok.example.invalid/remote-jobs/735421",
+    "unmapped_source_field": {"retained": true}
+  }
+]

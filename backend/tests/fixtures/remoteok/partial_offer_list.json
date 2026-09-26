@@ -1,0 +1,14 @@
+[
+  {
+    "slug": "incomplete-role",
+    "company": "  ",
+    "position": "Operations Analyst",
+    "company_logo": "not a URL",
+    "tags": [null, 17, "operations", "  "],
+    "description": "",
+    "location": null,
+    "salary_min": -100,
+    "salary_max": "not disclosed",
+    "extra": ["unexpected", "but preserved in RawOffer"]
+  }
+]
