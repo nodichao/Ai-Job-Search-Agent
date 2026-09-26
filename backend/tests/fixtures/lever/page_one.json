@@ -1,0 +1,18 @@
+[
+  {
+    "id": "lever-101",
+    "text": "Platform Engineer",
+    "categories": {
+      "location": "Dakar, Senegal",
+      "commitment": "Full-time",
+      "team": "Infrastructure",
+      "department": "Engineering",
+      "allLocations": ["Dakar, Senegal", "Remote - Senegal"]
+    }
+  },
+  {
+    "id": "lever-102",
+    "text": "Product Designer",
+    "categories": {"location": "Paris, France", "commitment": "Contract"}
+  }
+]
