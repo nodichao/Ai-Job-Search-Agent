@@ -20,6 +20,19 @@ uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 
 Copy `.env.example` to `.env`. Configuration is read from environment variables. Application construction does not make network requests; HTTP requests occur only when an enabled connector is used by `POST /api/search`.
 
+### Streamlit frontend
+
+A minimal Streamlit UI lives in `../frontend/` (a separate app; it only calls this backend's HTTP API, never the matching engine or other services directly). With the backend running, in a second terminal:
+
+```sh
+cd ../frontend
+python -m venv .venv && source .venv/Scripts/activate  # or .venv/bin/activate on Linux/macOS
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Set `JOB_AGENT_API_URL` (default `http://localhost:8000`) if the backend runs elsewhere. See `../frontend/README.md`.
+
 ## Connector configuration
 
 All sources are disabled by default.
@@ -53,6 +66,18 @@ Search now applies explicit post-retrieval filtering and deterministic matching.
 Each retained match includes a deterministic `recommendation` decision. The `ranking` object orders only recommended offers, with explicit ranks and their canonical source provenance. `results` still includes every offer retained by filtering, even when recommendation says not to present it or evidence is insufficient. Defaults are configurable with `RECOMMENDATION_SCORE_THRESHOLD=60` and `RECOMMENDATION_MINIMUM_CONFIDENCE=0.5`; these are initial presentation-policy thresholds, not calibrated hiring estimates. The policy, decision reasons, order, and tie-break rules are documented in `docs/implementation/recommendation-and-ranking.md`.
 
 `POST /api/search/from-text` accepts the same required `profile` plus `preferences_text` (1–20,000 characters). It uses the configured LLM to structure only explicitly stated search preferences, then calls the same criteria builder and search pipeline as `/api/search`; it returns the same response shape. Parsed preferences and the supplied profile are not persisted. Empty text returns 422; malformed requests return 422; LLM/provider or structured-output failures return a generic 502 and do not start a search. Quoted or pasted third-party content is treated as untrusted. Configure `GROQ_API_KEY`, `GROQ_MODEL`, and `REQUEST_TIMEOUT_SECONDS` as for CV extraction. See [`docs/implementation/natural-language-search.md`](../docs/implementation/natural-language-search.md). `GET /health` returns the health status.
+
+## Agentic workflow (`POST /api/agent/search`)
+
+`POST /api/agent/search` orchestrates the full CV-to-recommendations workflow behind a single call, for the Streamlit frontend in `../frontend/`. It is `multipart/form-data`: a `file` field (PDF or DOCX CV, same 5 MiB limit as `/api/profile/parse-cv`) and a `preferences` field containing a JSON `SearchPreferences` object (same shape as `/api/search`'s `preferences`).
+
+The request is handled by `AgentService` (`app/services/agent_service.py`), a deterministic, explicit orchestrator -- not an LLM-driven tool-calling loop. The workflow has exactly one valid order (each step needs the previous step's real output), so there is no ordering decision for an LLM to make; this is the bounded, explicit orchestration the project allows in place of unverified native tool-calling. It calls three adapters (`app/services/agent_tools.py`), each invoked at most once per request, over already-existing services:
+
+1. **`parse_cv`** -- delegates to the existing `ProfileService`/`CvDocumentExtractor` (same code path as `/api/profile/parse-cv`). A failure here (invalid file, or LLM extraction failure) stops the run with `422` or `502`; nothing downstream runs.
+2. **`search_jobs`** -- builds `SearchCriteria` from the preferences with the existing `criteria_from_preferences`, then calls the existing `SearchPipeline.search()` (the same collection → normalization → deduplication → filtering → matching → recommendation → ranking pipeline used by `/api/search`) with the real extracted profile. A failure here stops the run with `502`.
+3. **`explain_match`** -- selects offers to explain using **only** the engine's own ranking/score order (recommended offers first, then the highest-scoring remaining ones, up to `AGENT_MAX_EXPLANATIONS`, default `5`), and asks the configured LLM for a structured narrative per offer, grounded exclusively in that offer's already-computed score, confidence, decision, satisfied/unknown/conflicting criteria, and dimension evidence. The LLM never sees the raw CV text, never recomputes a score, and is instructed to flag rather than hide any apparent contradiction between the decision and a listed constraint. If the LLM call fails or returns an incomplete response, each affected offer falls back to a deterministic explanation built from the same `MatchExplanation` the pipeline already computes for every offer (visible via `explanations[].source: "llm" | "fallback"`); this step never fails the request.
+
+The response reuses the exact same `results`/`matches`/`excluded`/`ranking`/`meta` shapes as `/api/search` (built by the same helper functions), plus `profile` (as extracted), `preferences` (as supplied), `explanations` (one entry per explained offer, keyed by that offer's own identity), `warnings`, and `steps` (a trace of which tool ran, and whether explanation used the LLM or the fallback). The agent never edits a score, filter decision, confidence, or recommendation; those remain the pipeline's exclusive, unmodified output. `AGENT_MAX_EXPLANATIONS` (default `5`) configures the explanation limit.
 
 ## Shortlist
 
@@ -149,6 +174,8 @@ Example request:
 ## Limitations and tests
 
 No connector is declared operational. Tests use local fixtures and `httpx.MockTransport`; they do not contact job sources or establish permission to store or redistribute their data. Greenhouse remains unavailable until a source-specific parser and normalizer are implemented and authorized. Lever is opt-in only and currently maps a subset of its documented fields. RemoteOK is opt-in only and its output must be displayed with the required source and offer links before use as an aggregator.
+
+Agent tests (`tests/unit/test_agent_tools.py`, `test_agent_service.py`, `test_groq_explain_match.py`, `tests/integration/test_agent_api.py`) mock the LLM and use a deterministic fixture connector; they do not call Groq or a real job source. The `/api/agent/search` explanation step (`explain_match`) has been exercised once against the real, already-configured Groq provider and the live Himalayas feed as a manual smoke check; this is not part of the automated suite (see "Optional one-request RemoteOK smoke check" above for the equivalent policy on live connector reads). The Streamlit frontend has been syntax-checked and its request/response handling reviewed against the actual API contract, but has not been exercised in a running browser session in this environment (see `../frontend/README.md`).
 
 Run all backend tests from this directory:
 

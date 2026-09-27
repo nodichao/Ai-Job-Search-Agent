@@ -34,6 +34,7 @@ class Settings:
     max_results_per_source: int = 100
     recommendation_score_threshold: float = 60.0
     recommendation_minimum_confidence: float = 0.5
+    agent_max_explanations: int = 5
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     port: int = 8000
 
@@ -45,12 +46,14 @@ class Settings:
             score_threshold = float(os.getenv("RECOMMENDATION_SCORE_THRESHOLD", "60"))
             minimum_confidence = float(os.getenv("RECOMMENDATION_MINIMUM_CONFIDENCE", "0.5"))
             port = int(os.getenv("PORT", "8000"))
+            max_explanations = int(os.getenv("AGENT_MAX_EXPLANATIONS", "5"))
             origins = tuple(item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if item.strip())
         except ValueError as exc:
             raise ConfigurationError("Numeric configuration has an invalid value") from exc
         if (timeout <= 0 or limit < 1 or not 1 <= port <= 65535
                 or not math.isfinite(score_threshold) or not 0 <= score_threshold <= 100
-                or not math.isfinite(minimum_confidence) or not 0 <= minimum_confidence <= 1):
+                or not math.isfinite(minimum_confidence) or not 0 <= minimum_confidence <= 1
+                or max_explanations < 1):
             raise ConfigurationError("Timeout, result limit, port, or recommendation policy is outside its valid range")
         return cls(
             app_env=os.getenv("APP_ENV", "development"),
@@ -67,6 +70,7 @@ class Settings:
             max_results_per_source=limit,
             recommendation_score_threshold=score_threshold,
             recommendation_minimum_confidence=minimum_confidence,
+            agent_max_explanations=max_explanations,
             cors_origins=origins,
             port=port,
         )

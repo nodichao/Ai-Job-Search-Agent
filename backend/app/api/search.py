@@ -10,6 +10,7 @@ from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
 from app.services.connector_runtime import ConnectorAvailability, SearchRuntime
 from app.services.search_criteria_builder import criteria_from_preferences
+from app.services.search_pipeline import SearchPipelineResult
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -78,6 +79,63 @@ def _runtime(request: Request) -> SearchRuntime:
     return request.app.state.search_runtime
 
 
+def build_offer_views(
+    pipeline_result: SearchPipelineResult,
+) -> tuple[list[OfferMatchView], list[ExcludedOfferView]]:
+    """Shape one pipeline result into the API's match/excluded views.
+
+    Shared with the agentic endpoint (`app/api/agent.py`) so both routes
+    present the exact same, unmodified pipeline evidence.
+    """
+    matches = [
+        OfferMatchView(
+            offerIdentity=item.offer.identity,
+            filtering=item.filtering,
+            matching=item.matching,
+            explanation=item.explanation,
+            recommendation=item.recommendation,
+        )
+        for item in pipeline_result.analyses if item.filtering.included
+    ]
+    excluded = [
+        ExcludedOfferView(
+            offer=item.offer,
+            filtering=item.filtering,
+            matching=item.matching,
+            explanation=item.explanation,
+            recommendation=item.recommendation,
+        )
+        for item in pipeline_result.analyses if not item.filtering.included
+    ]
+    return matches, excluded
+
+
+def build_search_meta(
+    pipeline_result: SearchPipelineResult,
+    runtime: SearchRuntime,
+    duration_ms: int,
+) -> SearchMeta:
+    offers = pipeline_result.included_offers
+    sources = list(dict.fromkeys(offer.source.name for offer in offers))
+    return SearchMeta(
+        total=len(offers),
+        sources=sources,
+        durationMs=duration_ms,
+        connectors=list(runtime.connectors),
+        failed_sources=[
+            {"source": failure.source_name, "category": failure.category}
+            for failure in pipeline_result.failures
+        ],
+        normalization_failures=NormalizationFailureSummary(
+            totalRejected=sum(pipeline_result.normalization_rejected_by_source.values()),
+            bySource=[
+                NormalizationFailureBySource(source=source, rejected=count)
+                for source, count in pipeline_result.normalization_rejected_by_source.items()
+            ],
+        ),
+    )
+
+
 async def _search_response(
     request: Request,
     profile: UserProfile,
@@ -87,49 +145,14 @@ async def _search_response(
     criteria = criteria_from_preferences(preferences)
     started = perf_counter()
     pipeline_result = await runtime.pipeline.search(criteria, profile, preferences)
-    offers = pipeline_result.included_offers
     duration_ms = round((perf_counter() - started) * 1000)
-    sources = list(dict.fromkeys(offer.source.name for offer in offers))
+    matches, excluded = build_offer_views(pipeline_result)
     return SearchResponse(
-        results=offers,
-        matches=[
-            OfferMatchView(
-                offerIdentity=item.offer.identity,
-                filtering=item.filtering,
-                matching=item.matching,
-                explanation=item.explanation,
-                recommendation=item.recommendation,
-            )
-            for item in pipeline_result.analyses if item.filtering.included
-        ],
-        excluded=[
-            ExcludedOfferView(
-                offer=item.offer,
-                filtering=item.filtering,
-                matching=item.matching,
-                explanation=item.explanation,
-                recommendation=item.recommendation,
-            )
-            for item in pipeline_result.analyses if not item.filtering.included
-        ],
+        results=pipeline_result.included_offers,
+        matches=matches,
+        excluded=excluded,
         ranking=pipeline_result.ranking,
-        meta=SearchMeta(
-            total=len(offers),
-            sources=sources,
-            durationMs=duration_ms,
-            connectors=list(runtime.connectors),
-            failed_sources=[
-                {"source": failure.source_name, "category": failure.category}
-                for failure in pipeline_result.failures
-            ],
-            normalization_failures=NormalizationFailureSummary(
-                totalRejected=sum(pipeline_result.normalization_rejected_by_source.values()),
-                bySource=[
-                    NormalizationFailureBySource(source=source, rejected=count)
-                    for source, count in pipeline_result.normalization_rejected_by_source.items()
-                ],
-            ),
-        ),
+        meta=build_search_meta(pipeline_result, runtime, duration_ms),
     )
 
 

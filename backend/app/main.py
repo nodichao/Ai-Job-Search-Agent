@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 
+from app.api.agent import router as agent_router
 from app.api.health import router as health_router
 from app.api.profile import router as profile_router
 from app.api.search import router as search_router
@@ -12,6 +13,7 @@ from app.core.config import Settings
 from app.llm.base import LLMService
 from app.llm.groq_service import GroqLLMService
 from app.connectors.common.http import HttpJsonFetcher
+from app.services.agent_service import AgentService
 from app.services.connector_runtime import SearchRuntime, build_search_runtime
 from app.repositories.shortlist_repository import ShortlistRepository
 from app.repositories.sqlite_shortlist_repository import SQLiteShortlistRepository
@@ -32,6 +34,7 @@ def create_app(
     shortlist_repository: ShortlistRepository | None = None,
     user_settings_repository: UserSettingsRepository | None = None,
     llm_service: LLMService | None = None,
+    agent_service: AgentService | None = None,
 ) -> FastAPI:
     application = FastAPI(title="AI Job Search Agent API", version="0.1.0")
 
@@ -59,11 +62,18 @@ def create_app(
     )
     application.state.llm_service = configured_llm
     application.state.profile_service = ProfileService(configured_llm)
+    application.state.agent_service = agent_service or AgentService(
+        application.state.profile_service,
+        application.state.search_runtime.pipeline,
+        configured_llm,
+        max_explanations=app_settings.agent_max_explanations,
+    )
     application.include_router(health_router)
     application.include_router(profile_router)
     application.include_router(search_router)
     application.include_router(shortlist_router)
     application.include_router(preferences_router)
+    application.include_router(agent_router)
     return application
 
 

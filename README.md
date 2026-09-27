@@ -290,6 +290,10 @@ backend/
 
 The implementation deliberately avoids unnecessary infrastructure such as LangChain, LangGraph, Redis, Kafka, Celery, Kubernetes, vector databases, and advanced ML for the MVP.
 
+## 🤖 Agent orchestration and Streamlit frontend
+
+An orchestration layer now sits on top of the existing search/matching pipeline: `POST /api/agent/search` (backend) runs `parse_cv → search_jobs → explain_match` as a bounded, explicit sequence over the existing `ProfileService`, `SearchPipeline`, and `LLMService` -- it does not reimplement or alter any score, filter decision, or recommendation. A minimal Streamlit app in `frontend/` calls that endpoint: upload a CV, set preferences, click one button, see the engine's own results and an LLM-generated (or deterministic-fallback) explanation per offer. See `backend/README.md` ("Agentic workflow") and `frontend/README.md` for the exact contract and how to run both.
+
 ## 📚 Documentation
 
 ### Project and architecture
