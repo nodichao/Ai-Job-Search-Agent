@@ -1,5 +1,5 @@
 """Orchestrate collection and normalization without merging their services."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.domain.job_offer import JobOffer
 from app.domain.matching import FilteringResult, MatchExplanation, MatchingResult
@@ -27,6 +27,7 @@ class SearchPipelineResult:
     failures: list[SourceFailure]
     analyses: list["OfferAnalysis"]
     ranking: RankingResult
+    normalization_rejected_by_source: dict[str, int] = field(default_factory=dict)
 
     @property
     def included_offers(self) -> list[JobOffer]:
@@ -70,8 +71,9 @@ class SearchPipeline:
         preferences: SearchPreferences | None = None,
     ) -> SearchPipelineResult:
         collection = await self._search_service.search_with_status(criteria)
+        normalization = self._normalization_service.normalize_with_status(collection.offers)
         offers = self._deduplication_service.deduplicate(
-            self._normalization_service.normalize(collection.offers)
+            normalization.offers
         )
         profile = profile or UserProfile()
         preferences = preferences or SearchPreferences()
@@ -102,4 +104,5 @@ class SearchPipeline:
             failures=collection.failures,
             analyses=analyses,
             ranking=ranking,
+            normalization_rejected_by_source=normalization.rejected_by_source,
         )

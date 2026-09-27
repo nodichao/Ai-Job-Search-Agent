@@ -263,7 +263,7 @@ The implementation-ready MVP is specified in:
 - Pydantic v2
 - httpx
 - pytest / pytest-asyncio
-- OpenAI Python SDK behind an internal LLM service
+- Groq Python SDK behind an internal LLM service
 - SQLite for the MVP
 - Uvicorn
 - Docker

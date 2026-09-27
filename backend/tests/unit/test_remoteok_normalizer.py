@@ -94,6 +94,34 @@ def test_normalizer_keeps_single_salary_bound_without_inventing_the_other() -> N
     assert component.type is CompensationType.UNKNOWN
 
 
+def test_normalizer_sanitizes_html_description_and_omits_active_content() -> None:
+    raw = _raw()
+    raw.payload["description"] = (
+        "<p>Build <strong>React</strong> applications &amp; APIs.</p>"
+        "<script>alert('not job content')</script>"
+        "<style>.hidden { display: none }</style>"
+        "<ul><li>Use Node.js</li><li>Review pull requests</li></ul>"
+    )
+
+    offer = RemoteOKNormalizer().normalize(raw)
+
+    assert offer.position.description == "Build React applications & APIs.\nUse Node.js\nReview pull requests"
+    assert "alert" not in offer.position.description
+    assert "display: none" not in offer.position.description
+
+
+def test_zero_salary_values_remain_unknown_instead_of_becoming_a_zero_range() -> None:
+    raw = _raw()
+    raw.payload["salary_min"] = 0
+    raw.payload["salary_max"] = 0
+
+    offer = RemoteOKNormalizer().normalize(raw)
+
+    assert offer.compensation is None
+    assert raw.payload["salary_min"] == 0
+    assert raw.payload["salary_max"] == 0
+
+
 def test_normalizer_rejects_wrong_source_or_missing_title() -> None:
     normalizer = RemoteOKNormalizer()
     raw = _raw()

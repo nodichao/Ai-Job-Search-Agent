@@ -19,7 +19,7 @@ These instructions reduce hallucination risk; the application cannot independent
 
 ## Configuration, privacy, and persistence
 
-`OPENAI_API_KEY` and `LLM_MODEL` configure the existing OpenAI adapter. `REQUEST_TIMEOUT_SECONDS` supplies its request timeout. The application constructs the adapter without contacting the provider; the request is made only when `/parse-cv` is called. Provider calls use structured Chat Completions parsing with response storage disabled. No full CV or prompt is logged. The endpoint does not persist or overwrite the saved profile. The CV is transmitted to the configured provider, so its provider-side handling remains subject to that provider's terms and account settings.
+`GROQ_API_KEY` and `GROQ_MODEL` configure the existing Groq adapter. `REQUEST_TIMEOUT_SECONDS` supplies its request timeout. The application constructs the adapter without contacting the provider; the request is made only when `/parse-cv` is called. Provider calls use Groq Structured Outputs with JSON Schema strict mode. The adapter does not retry failed calls, and provider errors are returned to API clients only as a generic failure. No full CV or prompt is logged. The endpoint does not persist or overwrite the saved profile. The CV is transmitted to Groq, so its provider-side handling remains subject to Groq's terms and account settings.
 
 Input/document validation failures return 4xx responses. Provider or structured-response failures return a generic 502 without provider messages, prompts, or CV text. The endpoint does not parse scanned-image OCR, password-protected documents, legacy `.doc`, or other document formats. PDF/DOCX uploads are capped at 5 MiB; extracted text is capped at 100,000 characters.
 

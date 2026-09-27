@@ -1,0 +1,47 @@
+[
+  {
+    "id": 900001,
+    "slug": "full-stack-developer-dakar-sampleco",
+    "date": "2026-09-25T09:00:00Z",
+    "company": "SampleCo",
+    "position": "Full-Stack Developer",
+    "tags": ["React", "Node.js", "MongoDB"],
+    "description": "<p>Build web products with React and Node.js.</p>",
+    "location": "Dakar, Senegal",
+    "apply_url": "https://apply.example.invalid/jobs/900001",
+    "salary_min": 500000,
+    "salary_max": 1000000,
+    "url": "https://remoteok.example.invalid/remote-jobs/900001"
+  },
+  {
+    "id": 900001,
+    "slug": "duplicate-full-stack-developer-dakar-sampleco",
+    "date": "2026-09-25T09:00:00Z",
+    "company": "SampleCo",
+    "position": "Duplicate record that must not replace the first offer",
+    "tags": ["React"],
+    "location": "Dakar, Senegal",
+    "url": "https://remoteok.example.invalid/remote-jobs/900001-copy"
+  },
+  {
+    "id": 900002,
+    "slug": "frontend-developer-berlin-otherco",
+    "date": "2026-09-24T09:00:00Z",
+    "company": "OtherCo",
+    "position": "Frontend Developer",
+    "tags": ["React"],
+    "description": "Build user interfaces.",
+    "location": "Berlin, Germany",
+    "url": "https://remoteok.example.invalid/remote-jobs/900002"
+  },
+  {
+    "id": 900003,
+    "slug": "full-stack-developer-location-unlisted",
+    "date": "2026-09-23T09:00:00Z",
+    "company": "UnlistedCo",
+    "position": "Full-Stack Developer",
+    "tags": ["Node.js"],
+    "description": "The listing does not provide a location.",
+    "url": "https://remoteok.example.invalid/remote-jobs/900003"
+  }
+]

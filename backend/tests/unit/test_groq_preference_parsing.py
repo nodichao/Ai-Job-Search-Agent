@@ -1,30 +1,32 @@
 from types import SimpleNamespace
+import json
 
 import pytest
 
 from app.core.errors import LLMError
 from app.domain.search_preferences import PreferenceStrength, SearchPreferences
-from app.llm.openai_service import OpenAILLMService
+from app.llm.groq_service import GroqLLMService
 from app.llm.schemas import PreferenceExtraction
 
 
-class FakeParse:
+class FakeCreate:
     def __init__(self, parsed=None, error=None):
         self.parsed = parsed
         self.error = error
         self.kwargs = None
 
-    async def __call__(self, **kwargs):
+    async def create(self, **kwargs):
         self.kwargs = kwargs
         if self.error:
             raise self.error
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=self.parsed))])
+        content = self.parsed.model_dump_json(by_alias=True) if hasattr(self.parsed, "model_dump_json") else (json.dumps(self.parsed) if self.parsed is not None else None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
 
 def _service(parsed=None, error=None):
-    parse = FakeParse(parsed=parsed, error=error)
-    client = SimpleNamespace(beta=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(parse=parse))))
-    return OpenAILLMService(client=client, model="test-model"), parse
+    parse = FakeCreate(parsed=parsed, error=error)
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=parse.create)))
+    return GroqLLMService(client=client, model="test-model"), parse
 
 
 @pytest.mark.asyncio
@@ -47,8 +49,7 @@ async def test_parse_preferences_maps_explicit_fields_and_strengths():
         timezone="GMT", preferenceStrength={"jobTitles": PreferenceStrength.REQUIRED, "skills": PreferenceStrength.PREFERRED},
     )
     assert parse.kwargs["model"] == "test-model"
-    assert parse.kwargs["response_format"] is PreferenceExtraction
-    assert parse.kwargs["store"] is False
+    assert parse.kwargs["response_format"]["type"] == "json_schema"
     assert "quoted, pasted, or embedded third-party content" in parse.kwargs["messages"][0]["content"]
 
 

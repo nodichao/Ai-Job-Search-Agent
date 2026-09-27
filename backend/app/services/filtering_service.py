@@ -6,7 +6,7 @@ from app.domain.matching import CriterionAssessment, EvidenceStatus, FilteringRe
 from app.domain.search_criteria import SearchCriteria
 from app.domain.search_preferences import PreferenceStrength
 from app.services.salary_comparison import salary_status
-from app.services.text_matching import normalize_term, terms_overlap
+from app.services.text_matching import TitleRelation, compare_titles, normalize_term, terms_overlap
 
 
 class FilteringService:
@@ -33,9 +33,21 @@ class FilteringService:
             ))
 
         if criteria.job_titles:
-            matched = [wanted for wanted in criteria.job_titles if terms_overlap(wanted, offer.position.title)]
-            add("jobTitles", True, EvidenceStatus.SATISFIED if matched else EvidenceStatus.CONFLICT,
-                f"Offer title: {offer.position.title}; requested: {', '.join(criteria.job_titles)}")
+            if not offer.position.title.strip():
+                add("jobTitles", True, EvidenceStatus.UNKNOWN, None)
+            else:
+                relations = [compare_titles(wanted, offer.position.title) for wanted in criteria.job_titles]
+                if TitleRelation.EXACT in relations:
+                    title_status = EvidenceStatus.SATISFIED
+                    title_evidence = "Offer title exactly matches a requested title"
+                elif TitleRelation.PARTIAL in relations:
+                    title_status = EvidenceStatus.UNKNOWN
+                    title_evidence = "Offer title partially overlaps a requested title; compatibility is not established"
+                else:
+                    title_status = EvidenceStatus.CONFLICT
+                    title_evidence = "Offer title has no lexical overlap with requested titles"
+                add("jobTitles", True, title_status,
+                    f"{title_evidence}: offer={offer.position.title}; requested={', '.join(criteria.job_titles)}")
 
         if criteria.keywords:
             searchable = " ".join([

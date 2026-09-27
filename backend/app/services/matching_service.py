@@ -4,7 +4,7 @@ from app.domain.matching import EvidenceStatus, MatchDimension, MatchingResult
 from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
 from app.services.salary_comparison import salary_status
-from app.services.text_matching import normalize_term, token_jaccard
+from app.services.text_matching import TitleRelation, compare_titles, normalize_term, token_jaccard
 
 
 class MatchingService:
@@ -98,12 +98,18 @@ class MatchingService:
             return MatchDimension(name="roleAlignment", status=EvidenceStatus.UNKNOWN, score=0,
                                  evidence=["No shared title terms; semantic alignment was not inferred"],
                                  missingCriteria=["roleAlignment: no shared title terms; semantic alignment was not inferred"])
+        relation = compare_titles(title, offer.position.title)
+        if relation is TitleRelation.PARTIAL:
+            return MatchDimension(name="roleAlignment", status=EvidenceStatus.UNKNOWN, score=score,
+                                 evidence=[f"Partial title term overlap only: {title} / {offer.position.title}; compatibility is not established"],
+                                 missingCriteria=[f"roleAlignment: partial title overlap for {title} / {offer.position.title}"])
         return MatchDimension(name="roleAlignment", status=EvidenceStatus.SATISFIED, score=score,
                              evidence=[f"Title term overlap: {title} / {offer.position.title}"],
                              matchedCriteria=[f"roleAlignment: title term overlap for {title} / {offer.position.title}"])
 
     def _preferences(self, preferences: SearchPreferences, offer: JobOffer) -> MatchDimension:
         checks: list[tuple[str, EvidenceStatus | None, str | None]] = []
+        partial_title_score: float | None = None
 
         if preferences.remote is not None:
             actual_remote = offer.location.remote
@@ -162,23 +168,47 @@ class MatchingService:
             status, evidence = salary_status(preferences.salary, offer)
             checks.append(("salary", status if status is not EvidenceStatus.UNKNOWN else None, evidence))
         if preferences.job_titles:
-            matched = any(token_jaccard(title, offer.position.title) > 0 for title in preferences.job_titles)
-            checks.append(("jobTitles", EvidenceStatus.SATISFIED if matched else EvidenceStatus.CONFLICT,
-                           "Offer title shares terms with a preferred title" if matched else "No shared title terms"))
+            if not offer.position.title.strip():
+                checks.append(("jobTitles", None, None))
+            else:
+                relations = [compare_titles(title, offer.position.title) for title in preferences.job_titles]
+                if TitleRelation.EXACT in relations:
+                    checks.append(("jobTitles", EvidenceStatus.SATISFIED,
+                                   "Offer title exactly matches a preferred title"))
+                elif TitleRelation.PARTIAL in relations:
+                    partial_title_score = max(
+                        token_jaccard(title, offer.position.title) for title in preferences.job_titles
+                    ) * 100
+                    checks.append(("jobTitles", EvidenceStatus.UNKNOWN,
+                                   "Offer title partially overlaps a preferred title; compatibility is not established"))
+                else:
+                    checks.append(("jobTitles", EvidenceStatus.CONFLICT,
+                                   "Offer title has no lexical overlap with preferred titles"))
 
         known = [status for _, status, _ in checks if status is not None]
         if not known:
             return MatchDimension(name="preferences", status=EvidenceStatus.UNKNOWN,
                                  evidence=[f"{name}: evidence unavailable" for name, _, _ in checks] or ["No search preferences supplied"],
                                  missingCriteria=[f"preferences: {name} evidence unavailable" for name, _, _ in checks] or ["preferences: no search preferences supplied"])
-        score = 100 * sum(status is EvidenceStatus.SATISFIED for status in known) / len(known)
+        criterion_scores = [
+            partial_title_score if name == "jobTitles" and status is EvidenceStatus.UNKNOWN
+            and partial_title_score is not None else
+            100.0 if status is EvidenceStatus.SATISFIED else 0.0
+            for name, status, _ in checks if status is not None
+        ]
+        score = sum(criterion_scores) / len(criterion_scores)
         unknown = [(name, text) for name, item, text in checks if item is None]
         status = (EvidenceStatus.CONFLICT if any(item is EvidenceStatus.CONFLICT for item in known)
-                  else EvidenceStatus.UNKNOWN if unknown else EvidenceStatus.SATISFIED)
+                  else EvidenceStatus.UNKNOWN if unknown or any(item is EvidenceStatus.UNKNOWN for item in known)
+                  else EvidenceStatus.SATISFIED)
         evidence = [text for _, _, text in checks if text]
         evidence.extend(f"{name}: evidence unavailable" for name, item, _ in checks if item is None)
         matched_items = [f"preferences: {name} satisfied" for name, item, _ in checks if item is EvidenceStatus.SATISFIED]
-        missing_items = [f"preferences: {name} evidence unavailable" for name, item, _ in checks if item is None]
+        missing_items = [
+            f"preferences: {name} evidence unavailable" if item is None
+            else f"preferences: {name} compatibility is uncertain"
+            for name, item, _ in checks if item is None or item is EvidenceStatus.UNKNOWN
+        ]
         conflict_items = [f"preferences: {name} conflicts with supplied offer evidence" for name, item, _ in checks if item is EvidenceStatus.CONFLICT]
         return MatchDimension(name="preferences", status=status, score=score, evidence=evidence,
                               matchedCriteria=matched_items, missingCriteria=missing_items, conflicts=conflict_items)

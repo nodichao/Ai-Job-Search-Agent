@@ -24,6 +24,18 @@ class SearchFromTextRequest(BaseModel):
     preferences_text: str = Field(min_length=1, max_length=20_000)
 
 
+class NormalizationFailureBySource(BaseModel):
+    source: str
+    rejected: int
+
+
+class NormalizationFailureSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    total_rejected: int = Field(alias="totalRejected")
+    by_source: list[NormalizationFailureBySource] = Field(alias="bySource")
+
+
 class SearchMeta(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -32,6 +44,10 @@ class SearchMeta(BaseModel):
     durationMs: int
     connectors: list[ConnectorAvailability]
     failed_sources: list[dict[str, str]] = Field(alias="failedSources")
+    normalization_failures: NormalizationFailureSummary = Field(
+        default_factory=lambda: NormalizationFailureSummary(totalRejected=0, bySource=[]),
+        alias="normalizationFailures",
+    )
 
 
 class OfferMatchView(BaseModel):
@@ -45,6 +61,8 @@ class OfferMatchView(BaseModel):
 class ExcludedOfferView(BaseModel):
     offer: JobOffer
     filtering: FilteringResult
+    matching: MatchingResult
+    explanation: MatchExplanation
     recommendation: Recommendation
 
 
@@ -88,6 +106,8 @@ async def _search_response(
             ExcludedOfferView(
                 offer=item.offer,
                 filtering=item.filtering,
+                matching=item.matching,
+                explanation=item.explanation,
                 recommendation=item.recommendation,
             )
             for item in pipeline_result.analyses if not item.filtering.included
@@ -102,6 +122,13 @@ async def _search_response(
                 {"source": failure.source_name, "category": failure.category}
                 for failure in pipeline_result.failures
             ],
+            normalization_failures=NormalizationFailureSummary(
+                totalRejected=sum(pipeline_result.normalization_rejected_by_source.values()),
+                bySource=[
+                    NormalizationFailureBySource(source=source, rejected=count)
+                    for source, count in pipeline_result.normalization_rejected_by_source.items()
+                ],
+            ),
         ),
     )
 

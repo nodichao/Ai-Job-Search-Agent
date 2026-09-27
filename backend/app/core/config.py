@@ -1,8 +1,9 @@
-"""Small environment-driven settings object with no implicit .env loading."""
+"""Environment-driven application settings."""
 from dataclasses import dataclass
 import math
 import os
-
+from pathlib import Path
+from dotenv import load_dotenv
 from app.core.errors import ConfigurationError
 
 
@@ -16,12 +17,13 @@ def _bool(name: str, default: bool) -> bool:
     return normalized in {"true", "1", "yes"}
 
 
+
 @dataclass(frozen=True)
 class Settings:
     app_env: str = "development"
     log_level: str = "INFO"
-    openai_api_key: str | None = None
-    llm_model: str = "gpt-5.6-luna"
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-20b"
     database_url: str = "sqlite:///./job_agent.db"
     remoteok_enabled: bool = False
     remoteok_endpoint: str = "https://remoteok.com/api"
@@ -53,8 +55,8 @@ class Settings:
         return cls(
             app_env=os.getenv("APP_ENV", "development"),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
-            openai_api_key=os.getenv("OPENAI_API_KEY") or None,
-            llm_model=os.getenv("LLM_MODEL", "gpt-5.6-luna"),
+            groq_api_key=os.getenv("GROQ_API_KEY") or None,
+            groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./job_agent.db"),
             remoteok_enabled=_bool("REMOTEOK_ENABLED", False),
             remoteok_endpoint=os.getenv("REMOTEOK_ENDPOINT", "https://remoteok.com/api").strip(),
@@ -70,4 +72,14 @@ class Settings:
         )
 
 
-settings = Settings.from_env()
+def load_settings(dotenv_path: Path | None = None) -> Settings:
+    """Load backend environment defaults, then construct validated settings.
+
+    Existing process environment values take precedence over values in `.env`.
+    """
+    path = dotenv_path or Path(__file__).resolve().parents[2] / ".env"
+    load_dotenv(dotenv_path=path, override=False)
+    return Settings.from_env()
+
+
+settings = load_settings()

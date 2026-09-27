@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.connectors.common.http import HttpJsonFetcher
 from app.connectors.lever import LeverConnector, LeverSiteContext
+from app.connectors.himalayas import HimalayasConnector
 from app.connectors.remoteok import RemoteOKConnector
 from app.connectors.common.retry import RetryPolicy
 from app.core.config import Settings
@@ -37,8 +38,8 @@ def build_search_runtime(
 ) -> SearchRuntime:
     """Build configured connectors without performing network requests.
 
-    Sources whose current verification is pending remain opt-in. Greenhouse is
-    not constructed because the code has no production parser/normalizer.
+    Sources with explicit enablement are constructed without making requests.
+    Greenhouse remains inactive because it has no production parser/normalizer.
     """
     http = fetcher or HttpJsonFetcher(
         timeout_seconds=settings.request_timeout_seconds,
@@ -46,6 +47,24 @@ def build_search_runtime(
     )
     bindings: list[ConnectorBinding] = []
     states: list[ConnectorAvailability] = []
+
+    if settings.himalayas_enabled:
+        bindings.append(ConnectorBinding(HimalayasConnector(
+            http, max_results=settings.max_results_per_source
+        )))
+        states.append(ConnectorAvailability(
+            name="Himalayas",
+            status="development",
+            activeForSearch=True,
+            reason="Enabled; uses the documented public JSON browse feed and cursor. Attribution is required; rate limits apply; generic search criteria are not translated into undocumented filters.",
+        ))
+    else:
+        states.append(ConnectorAvailability(
+            name="Himalayas",
+            status="development",
+            activeForSearch=False,
+            reason="Disabled by HIMALAYAS_ENABLED=false.",
+        ))
 
     if settings.remoteok_enabled and settings.remoteok_endpoint:
         try:

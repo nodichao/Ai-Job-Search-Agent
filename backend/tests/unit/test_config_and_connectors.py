@@ -1,7 +1,7 @@
 import pytest
 import httpx
 
-from app.core.config import Settings
+from app.core.config import Settings, load_settings
 from app.core.errors import ConfigurationError, RateLimitError, SourceUnavailableError
 from app.connectors.common.retry import RetryPolicy
 from app.connectors.common.http import HttpJsonFetcher
@@ -12,9 +12,44 @@ from app.connectors.base import RawOffer
 def test_settings_load_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REQUEST_TIMEOUT_SECONDS", "4")
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000, https://example.test")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-20b")
     settings = Settings.from_env()
     assert settings.request_timeout_seconds == 4
     assert settings.cors_origins == ("http://localhost:3000", "https://example.test")
+    assert settings.groq_api_key == "test-key"
+    assert settings.groq_model == "openai/gpt-oss-20b"
+
+
+@pytest.mark.parametrize(("enabled_value", "expected"), [("true", True), ("false", False)])
+def test_load_settings_reads_remoteok_values_from_explicit_dotenv(tmp_path, monkeypatch, enabled_value, expected):
+    monkeypatch.delenv("REMOTEOK_ENABLED", raising=False)
+    monkeypatch.delenv("REMOTEOK_ENDPOINT", raising=False)
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text(
+        f"REMOTEOK_ENABLED={enabled_value}\nREMOTEOK_ENDPOINT=https://remoteok.com/api\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(dotenv_file)
+
+    assert settings.remoteok_enabled is expected
+    assert settings.remoteok_endpoint == "https://remoteok.com/api"
+
+
+def test_load_settings_keeps_system_environment_over_dotenv(tmp_path, monkeypatch):
+    monkeypatch.setenv("REMOTEOK_ENABLED", "false")
+    monkeypatch.setenv("REMOTEOK_ENDPOINT", "https://system.example/api")
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text(
+        "REMOTEOK_ENABLED=true\nREMOTEOK_ENDPOINT=https://remoteok.com/api\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(dotenv_file)
+
+    assert settings.remoteok_enabled is False
+    assert settings.remoteok_endpoint == "https://system.example/api"
 
 
 def test_connectors_default_to_disabled_and_load_explicit_context(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,6 +73,14 @@ def test_recommendation_policy_is_configurable_and_range_checked(monkeypatch: py
     monkeypatch.setenv("RECOMMENDATION_MINIMUM_CONFIDENCE", "1.2")
     with pytest.raises(ConfigurationError):
         Settings.from_env()
+
+
+def test_poc_recommendation_thresholds_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RECOMMENDATION_SCORE_THRESHOLD", "50")
+    monkeypatch.setenv("RECOMMENDATION_MINIMUM_CONFIDENCE", "0.30")
+    settings = Settings.from_env()
+    assert settings.recommendation_score_threshold == 50
+    assert settings.recommendation_minimum_confidence == 0.30
 
 
 def test_invalid_settings_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:

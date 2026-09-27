@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.core.config import Settings
+from app.main import create_app
 
+app = create_app(Settings(remoteok_enabled=False, himalayas_enabled=False))
 client = TestClient(app)
 
 
@@ -19,7 +21,7 @@ def test_search_route_returns_empty_results_and_explicit_connector_states_by_def
     assert body["meta"]["total"] == 0
     assert body["meta"]["sources"] == []
     statuses = {item["name"]: item for item in body["meta"]["connectors"]}
-    assert set(statuses) == {"RemoteOK", "Lever", "Greenhouse"}
+    assert set(statuses) == {"Himalayas", "RemoteOK", "Lever", "Greenhouse"}
     assert all(not item["activeForSearch"] for item in statuses.values())
 
 

@@ -75,7 +75,7 @@ This is a modular monolith, not a microservice system.
 -   Pydantic v2
 -   httpx
 -   pytest / pytest-asyncio
--   OpenAI Python SDK behind an internal `LLMService`
+-   Groq Python SDK behind an internal `LLMService`
 -   SQLite for the MVP
 -   Uvicorn
 -   Docker
@@ -83,13 +83,13 @@ This is a modular monolith, not a microservice system.
 Do not add LangChain, LangGraph, Redis, Kafka, Celery, Kubernetes or a
 vector database for this POC.
 
-The LLM model must be configurable through `LLM_MODEL`. Default:
+The LLM model must be configurable through `GROQ_MODEL`. Default:
 
 ``` text
-LLM_MODEL=gpt-5.6-luna
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-The API key must come from `OPENAI_API_KEY`.
+The API key must come from `GROQ_API_KEY`.
 
 ## 4. Backend structure
 
@@ -124,7 +124,7 @@ backend/
 │   │   └── recommendation_service.py
 │   ├── llm/
 │   │   ├── base.py
-│   │   ├── openai_service.py
+│   │   ├── groq_service.py
 │   │   ├── schemas.py
 │   │   └── prompts.py
 │   ├── connectors/
@@ -686,8 +686,8 @@ Mandatory:
 APP_ENV=development
 LOG_LEVEL=INFO
 
-OPENAI_API_KEY=
-LLM_MODEL=gpt-5.6-luna
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-20b
 
 DATABASE_URL=sqlite:///./job_agent.db
 

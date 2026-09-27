@@ -10,7 +10,7 @@ from app.api.preferences import router as preferences_router
 from app.core.logging import configure_logging
 from app.core.config import Settings
 from app.llm.base import LLMService
-from app.llm.openai_service import OpenAILLMService
+from app.llm.groq_service import GroqLLMService
 from app.connectors.common.http import HttpJsonFetcher
 from app.services.connector_runtime import SearchRuntime, build_search_runtime
 from app.repositories.shortlist_repository import ShortlistRepository
@@ -52,9 +52,9 @@ def create_app(
     application.state.shortlist_service = ShortlistService(repository)
     settings_repository = user_settings_repository or SQLiteUserSettingsRepository(app_settings.database_url)
     application.state.user_settings_service = UserSettingsService(settings_repository)
-    configured_llm = llm_service if llm_service is not None else OpenAILLMService(
-        api_key=app_settings.openai_api_key,
-        model=app_settings.llm_model,
+    configured_llm = llm_service if llm_service is not None else GroqLLMService(
+        api_key=app_settings.groq_api_key,
+        model=app_settings.groq_model,
         timeout_seconds=app_settings.request_timeout_seconds,
     )
     application.state.llm_service = configured_llm

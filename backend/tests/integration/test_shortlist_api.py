@@ -86,6 +86,7 @@ async def test_nonrecommended_search_offer_can_be_saved_and_survives_app_recreat
             database_url=database_url,
             remoteok_enabled=True,
             remoteok_endpoint="https://remoteok.example.test/api",
+            himalayas_enabled=False,
             recommendation_minimum_confidence=0.3,
         )
         app = create_app(settings, fetcher=HttpJsonFetcher(client=source_client))

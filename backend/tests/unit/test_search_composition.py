@@ -4,7 +4,7 @@ from app.services.connector_runtime import build_search_runtime
 
 
 def test_default_configuration_composes_no_live_sources():
-    runtime = build_search_runtime(Settings())
+    runtime = build_search_runtime(Settings(himalayas_enabled=False))
     assert runtime.pipeline is not None
     assert all(not status.active_for_search for status in runtime.connectors)
 
@@ -33,11 +33,23 @@ def test_remoteok_requires_explicit_opt_in():
 
 
 def test_greenhouse_stays_inactive_without_production_normalizer():
-    runtime = build_search_runtime(Settings())
+    runtime = build_search_runtime(Settings(himalayas_enabled=False))
     state = next(state for state in runtime.connectors if state.name == "Greenhouse")
     assert state.status == "access pending"
     assert not state.active_for_search
     assert "normalizer" in state.reason
+
+
+def test_himalayas_is_constructed_when_enabled_and_disabled_when_opted_out():
+    active = build_search_runtime(Settings(himalayas_enabled=True))
+    state = next(state for state in active.connectors if state.name == "Himalayas")
+    assert state.active_for_search
+    assert state.status == "development"
+    assert "Attribution" in state.reason
+
+    inactive = build_search_runtime(Settings(himalayas_enabled=False))
+    state = next(state for state in inactive.connectors if state.name == "Himalayas")
+    assert not state.active_for_search
 
 
 def test_invalid_explicit_remoteok_endpoint_is_reported_unavailable():

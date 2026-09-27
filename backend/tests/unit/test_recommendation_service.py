@@ -25,6 +25,21 @@ def test_low_score_is_not_recommended_and_threshold_is_configurable():
     assert result.reasons[0].evidence == ["score=74.99", "threshold=75"]
 
 
+def test_poc_thresholds_keep_score_and_confidence_as_independent_gates():
+    service = RecommendationService(RecommendationPolicy(score_threshold=50, minimum_confidence=0.30))
+
+    below_score = service.recommend(FilteringResult(included=True), MatchingResult(score=49.99, confidence=0.9))
+    assert below_score.decision is RecommendationDecision.NOT_RECOMMENDED
+    assert below_score.reasons[0].code is RecommendationReasonCode.SCORE_BELOW_THRESHOLD
+
+    below_confidence = service.recommend(FilteringResult(included=True), MatchingResult(score=80, confidence=0.29))
+    assert below_confidence.decision is RecommendationDecision.INSUFFICIENT_EVIDENCE
+    assert below_confidence.reasons[0].code is RecommendationReasonCode.CONFIDENCE_TOO_LOW
+
+    at_thresholds = service.recommend(FilteringResult(included=True), MatchingResult(score=50, confidence=0.30))
+    assert at_thresholds.decision is RecommendationDecision.RECOMMENDED
+
+
 def test_missing_score_and_low_confidence_are_insufficient_not_zero_score():
     service = RecommendationService()
     missing = service.recommend(FilteringResult(included=True), MatchingResult(score=None, confidence=0))
