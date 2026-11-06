@@ -18,7 +18,7 @@ matching -> recommendation -> ranking).
 import logging
 from dataclasses import dataclass, field
 
-from app.core.errors import LLMError
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
 from app.llm.base import LLMService
@@ -87,6 +87,9 @@ class AgentService:
         except CvDocumentError as exc:
             steps.append(AgentStep(tool="parse_cv", status="error", detail=str(exc)))
             raise AgentToolError("parse_cv", str(exc)) from exc
+        except LLMRateLimitError as exc:
+            steps.append(AgentStep(tool="parse_cv", status="error", detail="AI provider rate limit reached"))
+            raise AgentToolError("parse_cv", "AI provider rate limit reached") from exc
         except LLMError as exc:
             steps.append(AgentStep(tool="parse_cv", status="error", detail="Profile extraction service is unavailable"))
             raise AgentToolError("parse_cv", "Profile extraction service is unavailable") from exc

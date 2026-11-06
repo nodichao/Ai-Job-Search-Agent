@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.core.errors import LLMError
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.user_profile import UserProfile
 from app.main import create_app
 from app.services.cv_document_extractor import DOCX_MIME_TYPE, PDF_MIME_TYPE
@@ -84,6 +84,15 @@ def test_parse_cv_handles_provider_failure_without_leaking_details(tmp_path):
         response = client.post("/api/profile/parse-cv", json={"cv_text": "private CV text"})
     assert response.status_code == 502
     assert "personal cv data" not in response.text
+    assert "private CV text" not in response.text
+
+
+def test_parse_cv_reports_provider_rate_limit_as_retryable(tmp_path):
+    llm = FakeLLM(error=LLMRateLimitError("quota details"))
+    with TestClient(create_app(_settings(tmp_path), llm_service=llm)) as client:
+        response = client.post("/api/profile/parse-cv", json={"cv_text": "private CV text"})
+    assert response.status_code == 503
+    assert "rate limit" in response.json()["detail"]
     assert "private CV text" not in response.text
 
 

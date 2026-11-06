@@ -34,11 +34,15 @@ class SQLiteUserSettingsRepository(UserSettingsRepository):
             self._database_path.parent.mkdir(parents=True, exist_ok=True)
             connection = sqlite3.connect(self._database_path, timeout=5.0)
             connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA busy_timeout = 5000")
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS user_settings (
-                    setting_key TEXT PRIMARY KEY CHECK(setting_key IN ('profile', 'preferences')),
+                    user_id TEXT,
+                    setting_key TEXT NOT NULL CHECK(setting_key IN ('profile', 'preferences')),
                     payload_json TEXT NOT NULL,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, setting_key)
                 )"""
             )
             connection.commit()
@@ -53,7 +57,8 @@ class SQLiteUserSettingsRepository(UserSettingsRepository):
     def _get(self, key: str, model: type[T]) -> T | None:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT payload_json FROM user_settings WHERE setting_key = ?", (key,)
+                "SELECT payload_json FROM user_settings WHERE user_id IS NULL AND setting_key = ?",
+                (key,),
             ).fetchone()
         if row is None:
             return None
@@ -65,14 +70,22 @@ class SQLiteUserSettingsRepository(UserSettingsRepository):
     def _save(self, key: str, value: BaseModel) -> None:
         payload = json.dumps(value.model_dump(mode="json", by_alias=True), ensure_ascii=False, separators=(",", ":"))
         with self._connection() as connection:
-            connection.execute(
-                """INSERT INTO user_settings (setting_key, payload_json, updated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(setting_key) DO UPDATE SET
-                    payload_json = excluded.payload_json,
-                    updated_at = CURRENT_TIMESTAMP""",
-                (key, payload),
-            )
+            existing = connection.execute(
+                "SELECT payload_json FROM user_settings WHERE user_id IS NULL AND setting_key = ?",
+                (key,),
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    """INSERT INTO user_settings (user_id, setting_key, payload_json, updated_at)
+                    VALUES (NULL, ?, ?, CURRENT_TIMESTAMP)""",
+                    (key, payload),
+                )
+            else:
+                connection.execute(
+                    """UPDATE user_settings SET payload_json = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id IS NULL AND setting_key = ?""",
+                    (payload, key),
+                )
 
     def get_profile(self) -> UserProfile | None:
         return self._get("profile", UserProfile)

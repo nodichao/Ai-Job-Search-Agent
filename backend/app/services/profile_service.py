@@ -1,5 +1,5 @@
 """Orchestrate CV text/document extraction and structured profile validation."""
-from app.core.errors import LLMError
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.user_profile import UserProfile
 from app.llm.base import LLMService
 from app.services.cv_document_extractor import CvDocumentExtractor
@@ -18,6 +18,8 @@ class ProfileService:
         try:
             extracted = await self._llm_service.extract_profile(cv_text)
             profile = UserProfile.model_validate(extracted)
+        except LLMRateLimitError:
+            raise
         except Exception:
             # Never include provider errors or CV text in raised API errors.
             raise LLMError("Profile extraction failed") from None

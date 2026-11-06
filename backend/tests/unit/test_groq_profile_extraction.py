@@ -3,7 +3,10 @@ from types import SimpleNamespace
 import pytest
 import json
 
-from app.core.errors import LLMError
+import httpx
+import groq
+
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.user_profile import UserProfile
 from app.llm.groq_service import GroqLLMService
 
@@ -66,3 +69,28 @@ async def test_groq_adapter_redacts_provider_failure():
     with pytest.raises(LLMError) as exc:
         await GroqLLMService(client=client).extract_profile("CV text")
     assert "sensitive CV" not in str(exc.value)
+
+
+def _profile_client(parse):
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=parse.create)))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("model", "expected"), [("openai/gpt-oss-20b", "low"), ("llama-3.3-70b-versatile", None)])
+async def test_groq_adapter_lowers_reasoning_effort_only_for_reasoning_models(model, expected):
+    from app.llm.schemas import ProfileExtraction
+
+    parse = FakeCreate(parsed=ProfileExtraction.model_validate({"profile": {}}))
+    await GroqLLMService(client=_profile_client(parse), model=model).extract_profile("CV text")
+
+    assert parse.kwargs.get("reasoning_effort") == expected
+
+
+@pytest.mark.asyncio
+async def test_groq_adapter_reports_provider_rate_limit_distinctly():
+    response = httpx.Response(429, request=httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions"))
+    error = groq.RateLimitError("Rate limit reached", response=response, body={"error": {"code": "rate_limit_exceeded"}})
+    parse = FakeCreate(error=error)
+
+    with pytest.raises(LLMRateLimitError):
+        await GroqLLMService(client=_profile_client(parse)).extract_profile("CV text")

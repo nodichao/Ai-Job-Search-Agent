@@ -32,6 +32,8 @@ class SQLiteShortlistRepository(ShortlistRepository):
             self._database_path.parent.mkdir(parents=True, exist_ok=True)
             connection = sqlite3.connect(self._database_path, timeout=5.0)
             connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA busy_timeout = 5000")
             self._ensure_schema(connection)
             with connection:
                 yield connection

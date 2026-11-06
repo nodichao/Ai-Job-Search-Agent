@@ -10,6 +10,10 @@ class LLMError(JobAgentError):
     pass
 
 
+class LLMRateLimitError(LLMError):
+    """The LLM provider rejected the call because a usage quota was exhausted."""
+
+
 class ConnectorError(JobAgentError):
     pass
 

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.connectors.base import RawOffer
 from app.core.config import Settings
-from app.core.errors import LLMError
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.user_profile import UserProfile
 from app.llm.schemas import MatchExplanationBatch, OfferExplanation
 from app.main import create_app
@@ -157,6 +157,19 @@ def test_agent_search_rejects_when_cv_extraction_fails(tmp_path):
 
     assert response.status_code == 502
     assert "unavailable" in response.json()["detail"].lower()
+
+
+def test_agent_search_reports_provider_rate_limit_as_retryable(tmp_path):
+    llm = FakeLLM(extract_error=LLMRateLimitError("quota details"))
+    with TestClient(_app(llm, tmp_path)) as client:
+        response = client.post(
+            "/api/agent/search",
+            files={"file": ("cv.pdf", _minimal_pdf("Full-Stack Developer"), "application/pdf")},
+            data={"preferences": json.dumps(_preferences())},
+        )
+
+    assert response.status_code == 503
+    assert "rate limit" in response.json()["detail"]
 
 
 def test_agent_search_rejects_invalid_file(tmp_path):

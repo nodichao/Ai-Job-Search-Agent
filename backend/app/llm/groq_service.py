@@ -1,12 +1,14 @@
 """Groq SDK adapter for structured LLM operations."""
 import json
+import logging
 from typing import Any
 
 from groq import AsyncGroq
+from groq import RateLimitError as GroqRateLimitError
 from pydantic import BaseModel
 
 from app.core.config import settings
-from app.core.errors import LLMError
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.search_preferences import SearchPreferences
 from app.domain.user_profile import UserProfile
 from app.llm.prompts import (
@@ -21,7 +23,23 @@ from app.llm.schemas import (
     ProfileExtraction,
 )
 
+logger = logging.getLogger(__name__)
+
 _UNSET = object()
+
+# Reasoning models spend completion tokens on hidden reasoning before the JSON
+# answer. Left at the default effort, a long CV can exhaust the completion
+# budget and truncate the structured output; extraction needs little reasoning.
+_LOW_REASONING_MODEL_PREFIXES = ("openai/gpt-oss",)
+
+
+def _describe_failure(exc: Exception) -> str:
+    """Summarize a provider failure without its message, which may echo CV content."""
+    status = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+    error = body.get("error", body) if isinstance(body, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return f"{type(exc).__name__} status={status} code={code}"
 
 
 def _strict_schema(model: type[BaseModel]) -> dict[str, Any]:
@@ -80,23 +98,37 @@ class GroqLLMService:
     async def _extract(
         self, model: type[BaseModel], system_prompt: str, user_prompt: str, *, max_completion_tokens: int = 2000,
     ) -> BaseModel:
-        response = await self._require_configured_client().chat.completions.create(
-            model=self._model,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": model.__name__, "strict": True, "schema": _strict_schema(model)},
-            },
-            max_completion_tokens=max_completion_tokens,
-        )
+        extra: dict[str, Any] = {}
+        if self._model.startswith(_LOW_REASONING_MODEL_PREFIXES):
+            extra["reasoning_effort"] = "low"
+        try:
+            response = await self._require_configured_client().chat.completions.create(
+                model=self._model,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": model.__name__, "strict": True, "schema": _strict_schema(model)},
+                },
+                max_completion_tokens=max_completion_tokens,
+                **extra,
+            )
+        except GroqRateLimitError as exc:
+            logger.warning("Groq rate limit reached for %s: %s", model.__name__, _describe_failure(exc))
+            raise LLMRateLimitError("The LLM provider rate limit was reached") from None
         if not response.choices:
+            logger.warning("Groq returned no choices for %s", model.__name__)
             raise LLMError("The structured response was empty or invalid")
-        content = response.choices[0].message.content
+        choice = response.choices[0]
+        content = choice.message.content
         if not content:
+            logger.warning("Groq returned empty content for %s (finish_reason=%s)", model.__name__, getattr(choice, "finish_reason", None))
             raise LLMError("The structured response was empty or invalid")
         try:
             return model.model_validate(json.loads(content))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                "Groq returned invalid %s (finish_reason=%s): %s", model.__name__, getattr(choice, "finish_reason", None), type(exc).__name__,
+            )
             raise LLMError("The structured response was empty or invalid") from None
 
     async def extract_profile(self, cv_text: str) -> UserProfile:
@@ -115,7 +147,8 @@ class GroqLLMService:
             })
         except LLMError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning("Groq profile extraction failed: %s", _describe_failure(exc))
             raise LLMError("The profile extraction provider failed") from None
 
     async def parse_preferences(self, user_text: str) -> SearchPreferences:
@@ -135,7 +168,8 @@ class GroqLLMService:
             return SearchPreferences.model_validate(values)
         except LLMError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning("Groq preference parsing failed: %s", _describe_failure(exc))
             raise LLMError("The preference parsing provider failed") from None
 
     async def explain_match(self, items: list[ExplainableMatch]) -> MatchExplanationBatch:
@@ -161,5 +195,6 @@ class GroqLLMService:
             return batch
         except LLMError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning("Groq match explanation failed: %s", _describe_failure(exc))
             raise LLMError("The match explanation provider failed") from None

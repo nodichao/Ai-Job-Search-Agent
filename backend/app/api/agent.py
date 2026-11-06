@@ -19,7 +19,7 @@ from app.api.search import (
     build_offer_views,
     build_search_meta,
 )
-from app.core.errors import LLMError
+from app.core.errors import LLMError, LLMRateLimitError
 from app.domain.job_offer import JobOffer
 from app.domain.recommendation import RankingResult
 from app.domain.search_preferences import SearchPreferences
@@ -101,6 +101,8 @@ async def agent_search(
         )
     except AgentToolError as exc:
         if exc.tool == "parse_cv":
+            if isinstance(exc.__cause__, LLMRateLimitError):
+                raise HTTPException(status_code=503, detail="The AI provider rate limit was reached; please retry in about a minute") from None
             if isinstance(exc.__cause__, LLMError):
                 raise HTTPException(status_code=502, detail="Profile extraction service is unavailable") from None
             raise HTTPException(status_code=422, detail=str(exc)) from None

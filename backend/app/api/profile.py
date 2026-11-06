@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from app.core.errors import LLMError, PersistenceError
+from app.core.errors import LLMError, LLMRateLimitError, PersistenceError
 from app.domain.user_profile import UserProfile
 from app.services.cv_document_extractor import CvDocumentError, MAX_CV_FILE_BYTES
 from app.services.profile_service import ProfileService
@@ -112,5 +112,7 @@ async def parse_cv(request: Request) -> UserProfile:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    except LLMRateLimitError:
+        raise HTTPException(status_code=503, detail="The AI provider rate limit was reached; please retry in about a minute") from None
     except LLMError:
         raise HTTPException(status_code=502, detail="Profile extraction service is unavailable") from None
